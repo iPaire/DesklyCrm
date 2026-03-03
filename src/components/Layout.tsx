@@ -178,7 +178,7 @@ export default function Layout() {
       </aside>
 
       {/* Right side */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
 
         {/* Mobile top bar */}
         <header className="lg:hidden flex items-center gap-3 px-4 h-14 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 shrink-0">
@@ -200,7 +200,7 @@ export default function Layout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 min-h-0 overflow-auto bg-gray-50 dark:bg-gray-950">
           <Outlet />
         </main>
       </div>

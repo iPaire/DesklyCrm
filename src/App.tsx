@@ -11,6 +11,7 @@ import Signup from './pages/Signup'
 import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import Contacts from './pages/Contacts'
+import ContactDetail from './pages/ContactDetail'
 import Deals from './pages/Deals'
 import Tasks from './pages/Tasks'
 import Settings from './pages/Settings'
@@ -59,6 +60,7 @@ export default function App() {
           <Route element={<Layout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/contacts" element={<Contacts />} />
+            <Route path="/contacts/:id" element={<ContactDetail />} />
             <Route path="/deals" element={<Deals />} />
             <Route path="/tasks" element={<Tasks />} />
             <Route path="/settings" element={<Settings />} />
