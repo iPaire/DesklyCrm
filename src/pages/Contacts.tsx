@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
@@ -15,6 +15,35 @@ import {
 } from '../lib/contactColumns'
 
 type ToastState = { message: string; type: 'success' | 'error' } | null
+type SortBy = 'name' | 'created_at'
+type SortDir = 'asc' | 'desc'
+type GroupBy = 'none' | 'month' | 'week' | 'quarter'
+
+// ── Group label helper ────────────────────────────────────────────────────────
+
+function getGroupLabel(dateStr: string, groupBy: GroupBy): string {
+  const date = new Date(dateStr)
+  if (groupBy === 'month') {
+    return date.toLocaleString('default', { month: 'long', year: 'numeric' })
+  }
+  if (groupBy === 'week') {
+    const d = new Date(date)
+    d.setHours(0, 0, 0, 0)
+    d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
+    const week1 = new Date(d.getFullYear(), 0, 4)
+    const weekNum =
+      1 +
+      Math.round(
+        ((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7,
+      )
+    return `Week ${weekNum}, ${d.getFullYear()}`
+  }
+  if (groupBy === 'quarter') {
+    const q = Math.floor(date.getMonth() / 3) + 1
+    return `Q${q} ${date.getFullYear()}`
+  }
+  return ''
+}
 
 // ── Avatar ───────────────────────────────────────────────────────────────────
 
@@ -203,6 +232,11 @@ export default function Contacts() {
   const [fetchError, setFetchError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
+  // Sort + group
+  const [sortBy, setSortBy] = useState<SortBy>('created_at')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [groupBy, setGroupBy] = useState<GroupBy>('none')
+
   // Custom columns
   const [customColumns, setCustomColumns] = useState<CustomColumnDef[]>([])
   const [showManageColumns, setShowManageColumns] = useState(false)
@@ -228,6 +262,13 @@ export default function Contacts() {
   // Toast
   const [toast, setToast] = useState<ToastState>(null)
 
+  // Sticky horizontal scrollbar
+  const tableContainerRef = useRef<HTMLDivElement>(null)
+  const stickyScrollRef = useRef<HTMLDivElement>(null)
+  const syncingRef = useRef<'table' | 'sticky' | null>(null)
+  const [tableScrollWidth, setTableScrollWidth] = useState(0)
+  const [showStickyScroll, setShowStickyScroll] = useState(false)
+
   // Load column defs from localStorage
   useEffect(() => {
     if (user) setCustomColumns(getColumnDefs(user.id))
@@ -235,6 +276,24 @@ export default function Contacts() {
 
   useEffect(() => {
     fetchContacts()
+  }, [])
+
+  const onTableScroll = useCallback(() => {
+    if (syncingRef.current === 'sticky') return
+    syncingRef.current = 'table'
+    if (stickyScrollRef.current && tableContainerRef.current) {
+      stickyScrollRef.current.scrollLeft = tableContainerRef.current.scrollLeft
+    }
+    syncingRef.current = null
+  }, [])
+
+  const onStickyScroll = useCallback(() => {
+    if (syncingRef.current === 'table') return
+    syncingRef.current = 'sticky'
+    if (tableContainerRef.current && stickyScrollRef.current) {
+      tableContainerRef.current.scrollLeft = stickyScrollRef.current.scrollLeft
+    }
+    syncingRef.current = null
   }, [])
 
   const fetchContacts = async () => {
@@ -249,16 +308,74 @@ export default function Contacts() {
     setIsLoading(false)
   }
 
+  // Filtered + sorted
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
-    if (!q) return contacts
-    return contacts.filter(
-      (c) =>
-        c.name.toLowerCase().includes(q) ||
-        c.email?.toLowerCase().includes(q) ||
-        c.company?.toLowerCase().includes(q),
-    )
-  }, [contacts, search])
+    const result = q
+      ? contacts.filter(
+          (c) =>
+            c.name.toLowerCase().includes(q) ||
+            c.email?.toLowerCase().includes(q) ||
+            c.company?.toLowerCase().includes(q),
+        )
+      : [...contacts]
+    result.sort((a, b) => {
+      const cmp =
+        sortBy === 'name'
+          ? a.name.localeCompare(b.name)
+          : new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return result
+  }, [contacts, search, sortBy, sortDir])
+
+  // Grouped contacts
+  const groups = useMemo(() => {
+    if (groupBy === 'none') return [{ label: '', contacts: filtered }]
+    const map = new Map<string, Contact[]>()
+    for (const c of filtered) {
+      const label = getGroupLabel(c.created_at, groupBy)
+      if (!map.has(label)) map.set(label, [])
+      map.get(label)!.push(c)
+    }
+    return Array.from(map.entries()).map(([label, contacts]) => ({ label, contacts }))
+  }, [filtered, groupBy])
+
+  // Sort toggle
+  const toggleSort = (field: SortBy) => {
+    if (sortBy === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(field)
+      setSortDir(field === 'name' ? 'asc' : 'desc')
+    }
+  }
+
+  // Group select toggle
+  const toggleGroupSelect = (groupContacts: Contact[]) => {
+    const ids = groupContacts.map((c) => c.id)
+    const allInGroup = ids.every((id) => selectedIds.has(id))
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (allInGroup) ids.forEach((id) => next.delete(id))
+      else ids.forEach((id) => next.add(id))
+      return next
+    })
+  }
+
+  // Measure table overflow for sticky scrollbar
+  useEffect(() => {
+    const el = tableContainerRef.current
+    if (!el) return
+    const check = () => {
+      setTableScrollWidth(el.scrollWidth)
+      setShowStickyScroll(el.scrollWidth > el.clientWidth + 1)
+    }
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [filtered.length, customColumns.length, selecting, isLoading])
 
   // ── Long press ───────────────────────────────────────────────────────────
 
@@ -454,9 +571,9 @@ export default function Contacts() {
         </div>
       )}
 
-      {/* Search */}
+      {/* Search + Sort/Group toolbar */}
       {contacts.length > 0 && (
-        <div className="relative mb-4">
+        <div className="relative mb-3">
           <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
@@ -480,8 +597,59 @@ export default function Contacts() {
         </div>
       )}
 
+      {/* Sort + Group toolbar */}
+      {contacts.length > 0 && (
+        <div className="flex items-center gap-3 mb-4 flex-wrap">
+          {/* Sort */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Sort:</span>
+            {(['name', 'created_at'] as SortBy[]).map((field) => (
+              <button
+                key={field}
+                onClick={() => toggleSort(field)}
+                className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg transition-colors ${
+                  sortBy === field
+                    ? 'bg-primary-100 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                {field === 'name' ? 'Name' : 'Date added'}
+                {sortBy === field && (
+                  <svg
+                    className={`w-3 h-3 transition-transform ${sortDir === 'desc' ? 'rotate-180' : ''}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
+                  </svg>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
+
+          {/* Group by */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Group:</span>
+            {(['none', 'month', 'week', 'quarter'] as GroupBy[]).map((g) => (
+              <button
+                key={g}
+                onClick={() => setGroupBy(g)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors ${
+                  groupBy === g
+                    ? 'bg-primary-100 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                {g === 'none' ? 'None' : g.charAt(0).toUpperCase() + g.slice(1)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Table card */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800" style={{ overflow: 'clip' }}>
 
         {isLoading && (
           <div className="py-16 flex flex-col items-center gap-3">
@@ -510,116 +678,167 @@ export default function Contacts() {
 
         {/* Table */}
         {!isLoading && !fetchError && filtered.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100 dark:border-gray-800">
-                  {selecting && (
-                    <th className="px-4 py-3 w-10">
-                      <input
-                        type="checkbox"
-                        checked={allSelected}
-                        onChange={toggleSelectAll}
-                        className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 focus:ring-offset-0 cursor-pointer"
-                      />
-                    </th>
-                  )}
-                  <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hidden sm:table-cell">Email</th>
-                  <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hidden md:table-cell">Phone</th>
-                  <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hidden lg:table-cell">Company</th>
-                  {customColumns.map((col) => (
-                    <th key={col.key} className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hidden lg:table-cell">
-                      {col.label}
-                    </th>
-                  ))}
-                  {!selecting && <th className="px-5 py-3 w-10" />}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-                {filtered.map((contact) => {
-                  const isSelected = selectedIds.has(contact.id)
-                  return (
-                    <tr
-                      key={contact.id}
-                      onClick={() => handleRowClick(contact)}
-                      onPointerDown={(e) => startPress(contact.id, e)}
-                      onPointerUp={cancelPress}
-                      onPointerLeave={cancelPress}
-                      onPointerCancel={cancelPress}
-                      onContextMenu={(e) => e.preventDefault()}
-                      className={`cursor-pointer transition-colors group select-none ${
-                        isSelected
-                          ? 'bg-primary-50 dark:bg-primary-950/30 hover:bg-primary-50 dark:hover:bg-primary-950/40'
-                          : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
-                      }`}
-                    >
-                      {selecting && (
-                        <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleRowClick(contact)}
-                            className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 focus:ring-offset-0 cursor-pointer"
-                          />
-                        </td>
-                      )}
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center gap-3">
-                          <Avatar name={contact.name} />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900 dark:text-white">{contact.name}</p>
-                            {contact.email && (
-                              <p className="text-xs text-gray-400 dark:text-gray-500 sm:hidden">{contact.email}</p>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 hidden sm:table-cell">
-                        {contact.email ?? <span className="text-gray-200 dark:text-gray-700">-</span>}
-                      </td>
-                      <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 hidden md:table-cell">
-                        {contact.phone ?? <span className="text-gray-200 dark:text-gray-700">-</span>}
-                      </td>
-                      <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 hidden lg:table-cell">
-                        {contact.company ?? <span className="text-gray-200 dark:text-gray-700">-</span>}
-                      </td>
-                      {customColumns.map((col) => (
-                        <td key={col.key} className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 hidden lg:table-cell max-w-[160px] truncate">
-                          {contact.custom_fields?.[col.key] || <span className="text-gray-200 dark:text-gray-700">-</span>}
-                        </td>
-                      ))}
-                      {!selecting && (
-                        <td className="px-5 py-3.5 text-right">
-                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); navigate(`/contacts/${contact.id}`) }}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-950/50 transition-colors"
-                              title="View contact"
+          <>
+            <div
+              ref={tableContainerRef}
+              onScroll={onTableScroll}
+              className="overflow-x-auto [&::-webkit-scrollbar]:hidden"
+              style={{ scrollbarWidth: 'none' }}
+            >
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100 dark:border-gray-800">
+                    {selecting && (
+                      <th className="px-4 py-3 w-10">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          onChange={toggleSelectAll}
+                          className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 focus:ring-offset-0 cursor-pointer"
+                        />
+                      </th>
+                    )}
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Name</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hidden sm:table-cell">Email</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hidden md:table-cell">Phone</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hidden lg:table-cell">Company</th>
+                    {customColumns.map((col) => (
+                      <th key={col.key} className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                        {col.label}
+                      </th>
+                    ))}
+                    {!selecting && <th className="px-5 py-3 w-10" />}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+                  {groups.map(({ label, contacts: groupContacts }) => {
+                    const colCount =
+                      (selecting ? 1 : 0) + 4 + customColumns.length + (!selecting ? 1 : 0)
+                    const groupAllSelected =
+                      groupContacts.length > 0 && groupContacts.every((c) => selectedIds.has(c.id))
+                    return (
+                      <Fragment key={label || '__all__'}>
+                        {label && (
+                          <tr className="bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800">
+                            <td colSpan={colCount} className="px-5 py-2">
+                              <div className="flex items-center gap-3">
+                                {selecting && (
+                                  <input
+                                    type="checkbox"
+                                    checked={groupAllSelected}
+                                    onChange={() => toggleGroupSelect(groupContacts)}
+                                    className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 focus:ring-offset-0 cursor-pointer"
+                                  />
+                                )}
+                                <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                  {label}
+                                </span>
+                                <span className="text-xs text-gray-400 dark:text-gray-500">
+                                  {groupContacts.length} contact{groupContacts.length !== 1 ? 's' : ''}
+                                </span>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        {groupContacts.map((contact) => {
+                          const isSelected = selectedIds.has(contact.id)
+                          return (
+                            <tr
+                              key={contact.id}
+                              onClick={() => handleRowClick(contact)}
+                              onPointerDown={(e) => startPress(contact.id, e)}
+                              onPointerUp={cancelPress}
+                              onPointerLeave={cancelPress}
+                              onPointerCancel={cancelPress}
+                              onContextMenu={(e) => e.preventDefault()}
+                              className={`cursor-pointer transition-colors group select-none ${
+                                isSelected
+                                  ? 'bg-primary-50 dark:bg-primary-950/30 hover:bg-primary-50 dark:hover:bg-primary-950/40'
+                                  : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                              }`}
                             >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setDeleteTarget(contact) }}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors"
-                              title="Delete contact"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+                              {selecting && (
+                                <td className="px-4 py-3.5" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleRowClick(contact)}
+                                    className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 focus:ring-offset-0 cursor-pointer"
+                                  />
+                                </td>
+                              )}
+                              <td className="px-5 py-3.5">
+                                <div className="flex items-center gap-3">
+                                  <Avatar name={contact.name} />
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-900 dark:text-white">{contact.name}</p>
+                                    {contact.email && (
+                                      <p className="text-xs text-gray-400 dark:text-gray-500 sm:hidden">{contact.email}</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 hidden sm:table-cell">
+                                {contact.email ?? <span className="text-gray-200 dark:text-gray-700">-</span>}
+                              </td>
+                              <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 hidden md:table-cell">
+                                {contact.phone ?? <span className="text-gray-200 dark:text-gray-700">-</span>}
+                              </td>
+                              <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 hidden lg:table-cell">
+                                {contact.company ?? <span className="text-gray-200 dark:text-gray-700">-</span>}
+                              </td>
+                              {customColumns.map((col) => (
+                                <td key={col.key} className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 hidden lg:table-cell max-w-[160px] truncate">
+                                  {contact.custom_fields?.[col.key] || <span className="text-gray-200 dark:text-gray-700">-</span>}
+                                </td>
+                              ))}
+                              {!selecting && (
+                                <td className="px-5 py-3.5 text-right">
+                                  <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); navigate(`/contacts/${contact.id}`) }}
+                                      className="p-1.5 rounded-lg text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-950/50 transition-colors"
+                                      title="View contact"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                      </svg>
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setDeleteTarget(contact) }}
+                                      className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors"
+                                      title="Delete contact"
+                                    >
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                      </svg>
+                                    </button>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          )
+                        })}
+                      </Fragment>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Sticky horizontal scrollbar - always visible at viewport bottom */}
+            {showStickyScroll && (
+              <div
+                ref={stickyScrollRef}
+                onScroll={onStickyScroll}
+                className="sticky bottom-0 overflow-x-scroll border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900"
+                style={{ height: '14px' }}
+              >
+                <div style={{ width: tableScrollWidth, height: '1px' }} />
+              </div>
+            )}
+          </>
         )}
       </div>
 
