@@ -249,7 +249,7 @@ export default function Contacts() {
                 {filtered.map((contact) => (
                   <tr
                     key={contact.id}
-                    onClick={() => openEditModal(contact)}
+                    onClick={() => navigate(`/contacts/${contact.id}`)}
                     className="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer transition-colors group"
                   >
                     <td className="px-5 py-3.5">
