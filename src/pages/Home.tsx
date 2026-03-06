@@ -158,6 +158,8 @@ export default function Home() {
           <nav className="hidden md:flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
             <a href="#features" className="hover:text-gray-900 dark:hover:text-white transition-colors">Features</a>
             <a href="#pricing" className="hover:text-gray-900 dark:hover:text-white transition-colors">Pricing</a>
+            <a href="#how-to" className="hover:text-gray-900 dark:hover:text-white transition-colors">How To</a>
+            <Link to="/contact" className="hover:text-gray-900 dark:hover:text-white transition-colors">Contact</Link>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -496,6 +498,38 @@ export default function Home() {
           </div>
         </section>
 
+        {/* ── How To ── */}
+        <section id="how-to" className="max-w-5xl mx-auto px-4 sm:px-6 py-20">
+          <div className="text-center mb-14">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary-50 dark:bg-primary-950 border border-primary-100 dark:border-primary-900 rounded-full text-xs font-semibold text-primary-700 dark:text-primary-300 mb-5">
+              Get started in 5 minutes
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+              How to use Deskly
+            </h2>
+            <p className="text-gray-500 dark:text-gray-400 text-lg max-w-xl mx-auto">
+              Watch the tutorial below to get up and running in minutes.
+            </p>
+          </div>
+
+          {/* Video placeholder */}
+          <div className="relative w-full rounded-2xl overflow-hidden border-2 border-dashed border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900" style={{ paddingBottom: '56.25%' }}>
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center px-6">
+              <div className="w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-950 flex items-center justify-center">
+                <svg className="w-7 h-7 text-primary-600 dark:text-primary-400 ml-1" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-base font-semibold text-gray-900 dark:text-white mb-1">Tutorial coming soon</p>
+                <p className="text-sm text-gray-400 dark:text-gray-500 max-w-sm">
+                  A full walkthrough video will be added here shortly.
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
         {/* ── Final CTA ── */}
         <section className="bg-primary-600 py-20 px-4">
           <div className="max-w-3xl mx-auto text-center">
@@ -530,9 +564,9 @@ export default function Home() {
             <span className="text-sm font-semibold text-gray-900 dark:text-white">Deskly</span>
           </div>
           <div className="flex items-center gap-5 text-xs text-gray-400 dark:text-gray-500">
-            <a href="#" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Privacy</a>
-            <a href="#" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Terms</a>
-            <a href="#" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Contact</a>
+            <Link to="/privacy" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Privacy</Link>
+            <Link to="/terms" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Terms</Link>
+            <a href="mailto:support@desklycrm.com" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">support@desklycrm.com</a>
             <span>© {new Date().getFullYear()} Deskly</span>
           </div>
         </div>

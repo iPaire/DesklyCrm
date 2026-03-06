@@ -18,6 +18,9 @@ import Settings from './pages/Settings'
 import GmailCallback from './pages/GmailCallback'
 import Onboarding from './pages/Onboarding'
 import NotFound from './pages/NotFound'
+import Privacy from './pages/Privacy'
+import Terms from './pages/Terms'
+import Contact from './pages/Contact'
 
 export default function App() {
   const setUser = useAuthStore((s) => s.setUser)
@@ -58,6 +61,9 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/contact" element={<Contact />} />
 
         <Route element={<ProtectedRoute />}>
           {/* Full-screen pages - outside Layout */}
