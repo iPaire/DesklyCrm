@@ -59,7 +59,7 @@ export async function getTeam(userId: string) {
     .from('teams')
     .select('*')
     .eq('owner_id', userId)
-    .single()
+    .maybeSingle()
   return { team: data as Team | null, error }
 }
 
