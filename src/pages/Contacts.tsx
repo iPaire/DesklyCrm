@@ -108,11 +108,6 @@ export default function Contacts() {
     setModalOpen(true)
   }
 
-  const openEditModal = (contact: Contact) => {
-    setEditContact(contact)
-    setModalOpen(true)
-  }
-
   const closeModal = () => {
     setModalOpen(false)
     setEditContact(null)

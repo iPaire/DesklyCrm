@@ -1,16 +1,25 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import type { Contact, Deal, Task, EmailLog } from '../types'
+import { useAuthStore } from '../store/authStore'
+import type { Contact, Deal, Task, EmailLog, ActivityLog } from '../types'
 import { ContactModal } from '../components/ContactModal'
 import { EmailLogModal } from '../components/EmailLogModal'
 import { Toast } from '../components/Toast'
 import DealModal from '../components/DealModal'
 import TaskModal from '../components/TaskModal'
 
-type Tab = 'emails' | 'deals' | 'tasks'
+type Tab = 'timeline' | 'deals' | 'tasks'
+type TimelineFilter = 'all' | 'email' | 'activity' | 'deal' | 'task'
+type ActivityType = ActivityLog['type']
 
-type ToastState = { message: string; type: 'success' | 'error' } | null
+type TimelineEntry =
+  | { kind: 'email';    date: string; email:    EmailLog    }
+  | { kind: 'activity'; date: string; activity: ActivityLog }
+  | { kind: 'deal';     date: string; deal:     Deal        }
+  | { kind: 'task';     date: string; task:     Task        }
+
+type ToastState = { message: string; type: 'success' | 'error'; action?: { label: string; onClick: () => void } } | null
 
 // ── Avatar ────────────────────────────────────────────────────────────────────
 
@@ -176,14 +185,32 @@ const STAGE_LABELS: Record<string, string> = {
 export default function ContactDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useAuthStore()
 
-  const [contact,   setContact]   = useState<Contact | null>(null)
-  const [emails,    setEmails]    = useState<EmailLog[]>([])
-  const [deals,     setDeals]     = useState<Deal[]>([])
-  const [tasks,     setTasks]     = useState<Task[]>([])
-  const [loading,   setLoading]   = useState(true)
-  const [activeTab, setActiveTab] = useState<Tab>('emails')
-  const [toast,     setToast]     = useState<ToastState>(null)
+  const [contact,      setContact]      = useState<Contact | null>(null)
+  const [emails,       setEmails]       = useState<EmailLog[]>([])
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([])
+  const [deals,        setDeals]        = useState<Deal[]>([])
+  const [tasks,        setTasks]        = useState<Task[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [activeTab,    setActiveTab]    = useState<Tab>('timeline')
+  const [toast,        setToast]        = useState<ToastState>(null)
+
+  // Timeline filter
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>('all')
+
+  // Add note form
+  const [showAddNote, setShowAddNote] = useState(false)
+  const [noteType,    setNoteType]    = useState<ActivityType>('note')
+  const [noteContent, setNoteContent] = useState('')
+  const [noteSaving,  setNoteSaving]  = useState(false)
+
+  // Quick deal form
+  const [showQuickDeal, setShowQuickDeal] = useState(false)
+  const [qdName,        setQdName]        = useState('')
+  const [qdValue,       setQdValue]       = useState('')
+  const [qdStage,       setQdStage]       = useState<Deal['stage']>('lead')
+  const [qdSaving,      setQdSaving]      = useState(false)
 
   // Modals
   const [editOpen,       setEditOpen]       = useState(false)
@@ -200,9 +227,10 @@ export default function ContactDetail() {
   const loadAll = async (contactId: string) => {
     setLoading(true)
 
-    const [contactRes, emailsRes, dealsRes, tasksRes, allContactsRes] = await Promise.all([
+    const [contactRes, emailsRes, activityRes, dealsRes, tasksRes, allContactsRes] = await Promise.all([
       supabase.from('contacts').select('*').eq('id', contactId).single(),
       supabase.from('email_logs').select('*').eq('contact_id', contactId).order('received_at', { ascending: false }),
+      supabase.from('activity_logs').select('*').eq('contact_id', contactId).order('created_at', { ascending: false }),
       supabase.from('deals').select('*').eq('contact_id', contactId).order('created_at', { ascending: false }),
       supabase.from('tasks').select('*').eq('contact_id', contactId).order('created_at', { ascending: false }),
       supabase.from('contacts').select('*').order('name'),
@@ -215,6 +243,7 @@ export default function ContactDetail() {
 
     setContact(contactRes.data as Contact)
     setEmails((emailsRes.data ?? []) as EmailLog[])
+    setActivityLogs((activityRes.data ?? []) as ActivityLog[])
     setDeals((dealsRes.data ?? []) as Deal[])
     setTasks((tasksRes.data ?? []) as Task[])
     setAllContacts((allContactsRes.data ?? []) as Contact[])
@@ -237,6 +266,69 @@ export default function ContactDetail() {
   const twoFromNow = new Date()
   twoFromNow.setDate(twoFromNow.getDate() + 2)
   const taskDueDate = twoFromNow.toISOString().split('T')[0]
+
+  const handleAddNote = async () => {
+    if (!contact || !user || !noteContent.trim()) return
+    setNoteSaving(true)
+    const { data, error } = await supabase
+      .from('activity_logs')
+      .insert({ type: noteType, content: noteContent.trim(), contact_id: contact.id, user_id: user.id })
+      .select()
+      .single()
+    setNoteSaving(false)
+    if (error) { setToast({ message: error.message, type: 'error' }); return }
+    setActivityLogs(prev => [data as ActivityLog, ...prev])
+    setNoteContent('')
+    setNoteType('note')
+    setShowAddNote(false)
+    setToast({ message: 'Activity logged.', type: 'success' })
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const timelineEntries = useMemo<TimelineEntry[]>(() => {
+    const entries: TimelineEntry[] = [
+      ...emails.map(e => ({ kind: 'email'    as const, date: e.received_at ?? e.created_at, email:    e })),
+      ...activityLogs.map(a => ({ kind: 'activity' as const, date: a.created_at,              activity: a })),
+      ...deals.map(d => ({ kind: 'deal'     as const, date: d.created_at,              deal:     d })),
+      ...tasks.map(t => ({ kind: 'task'     as const, date: t.created_at,              task:     t })),
+    ]
+    return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }, [emails, activityLogs, deals, tasks])
+
+  const filteredEntries = useMemo(() => {
+    if (timelineFilter === 'all') return timelineEntries
+    return timelineEntries.filter(e => e.kind === timelineFilter)
+  }, [timelineEntries, timelineFilter])
+
+  const openQuickDeal = (name?: string, value?: number, stage?: Deal['stage']) => {
+    setQdName(name ?? `${contact?.company ?? contact?.name ?? ''} - Deal`)
+    setQdValue(value != null && value > 0 ? String(value) : '')
+    setQdStage(stage ?? 'lead')
+    setShowQuickDeal(true)
+  }
+
+  const handleQuickDealCreate = async () => {
+    if (!contact || !user || !qdName.trim()) return
+    setQdSaving(true)
+    const { data, error } = await supabase
+      .from('deals')
+      .insert({ name: qdName.trim(), value: parseFloat(qdValue) || 0, stage: qdStage, contact_id: contact.id, user_id: user.id })
+      .select()
+      .single()
+    setQdSaving(false)
+    if (error) { setToast({ message: error.message, type: 'error' }); return }
+    const newDeal = data as Deal
+    setDeals(prev => [newDeal, ...prev])
+    setShowQuickDeal(false)
+    setQdName('')
+    setQdValue('')
+    setQdStage('lead')
+    setToast({
+      message: `Deal "${newDeal.name}" created!`,
+      type: 'success',
+      action: { label: 'View in pipeline', onClick: () => navigate('/deals') },
+    })
+  }
 
   return (
     <div className="p-6 lg:p-8 max-w-3xl mx-auto">
@@ -303,7 +395,7 @@ export default function ContactDetail() {
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-3 mb-5">
         {[
-          { label: 'Emails', count: emails.length,   tab: 'emails' as Tab },
+          { label: 'Timeline', count: emails.length + activityLogs.length, tab: 'timeline' as Tab },
           { label: 'Deals',  count: deals.length,    tab: 'deals'  as Tab },
           { label: 'Tasks',  count: tasks.length,    tab: 'tasks'  as Tab },
         ].map(s => (
@@ -326,68 +418,348 @@ export default function ContactDetail() {
 
       {/* Tab content */}
 
-      {/* ── Emails tab ── */}
-      {activeTab === 'emails' && (
-        <div>
-          {emails.length === 0 ? (
-            <div className="py-16 flex flex-col items-center text-center">
-              <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-3">
-                <svg className="w-6 h-6 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">No emails synced yet</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                Connect Gmail in Settings and run a sync to see emails with this contact.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-0">
-              {emails.map(email => (
-                <EmailCard
-                  key={email.id}
-                  email={email}
-                  contact={contact}
-                  onView={() => setViewEmail(email)}
-                  onCreateDeal={() => setQuickDealEmail(email)}
-                  onAddTask={() => setQuickTaskEmail(email)}
-                />
+      {/* ── Timeline tab ── */}
+      {activeTab === 'timeline' && (
+        <div className="space-y-3">
+
+          {/* Top bar: Add Note + filter */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex gap-1.5 flex-wrap">
+              {(['all', 'activity', 'email', 'deal', 'task'] as TimelineFilter[]).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setTimelineFilter(f)}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors ${
+                    timelineFilter === f
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {f === 'all' ? 'All' : f === 'activity' ? 'Notes & Calls' : f.charAt(0).toUpperCase() + f.slice(1) + 's'}
+                </button>
               ))}
             </div>
+            <button
+              onClick={() => setShowAddNote(v => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Note
+            </button>
+          </div>
+
+          {/* Inline add-note form */}
+          {showAddNote && (
+            <div className="bg-white dark:bg-gray-900 border border-primary-200 dark:border-primary-800 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Log Activity</p>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Type</label>
+                <select
+                  value={noteType}
+                  onChange={e => setNoteType(e.target.value as ActivityType)}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                >
+                  <option value="note">Note</option>
+                  <option value="call">Call</option>
+                  <option value="meeting">Meeting</option>
+                  <option value="email">Email (manual)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Content</label>
+                <textarea
+                  value={noteContent}
+                  onChange={e => setNoteContent(e.target.value)}
+                  placeholder="What happened?"
+                  rows={3}
+                  autoFocus
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleAddNote}
+                  disabled={!noteContent.trim() || noteSaving}
+                  className="px-3.5 py-2 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                >
+                  {noteSaving ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => { setShowAddNote(false); setNoteContent('') }}
+                  className="px-3.5 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           )}
+
+          {/* Empty state */}
+          {filteredEntries.length === 0 && (
+            <div className="py-12 flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-3">
+                <svg className="w-6 h-6 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">No activity yet</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                {timelineFilter === 'all'
+                  ? 'Log a note, call or meeting using the button above.'
+                  : `No ${timelineFilter === 'activity' ? 'notes or calls' : timelineFilter + 's'} recorded yet.`}
+              </p>
+            </div>
+          )}
+
+          {/* Timeline entries */}
+          <div className="space-y-0">
+            {filteredEntries.map((entry, i) => {
+              const isLast = i === filteredEntries.length - 1
+
+              if (entry.kind === 'email') {
+                return (
+                  <EmailCard
+                    key={entry.email.id}
+                    email={entry.email}
+                    contact={contact}
+                    onView={() => setViewEmail(entry.email)}
+                    onCreateDeal={() => setQuickDealEmail(entry.email)}
+                    onAddTask={() => setQuickTaskEmail(entry.email)}
+                  />
+                )
+              }
+
+              if (entry.kind === 'activity') {
+                const a = entry.activity
+                const typeConfig: Record<ActivityType, { label: string; color: string; icon: JSX.Element }> = {
+                  note:    { label: 'Note',    color: 'bg-violet-100 dark:bg-violet-950 text-violet-600 dark:text-violet-400', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /> },
+                  call:    { label: 'Call',    color: 'bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /> },
+                  meeting: { label: 'Meeting', color: 'bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /> },
+                  email:   { label: 'Email',   color: 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400', icon: <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /> },
+                }
+                const cfg = typeConfig[a.type]
+                return (
+                  <div key={a.id} className="flex gap-3">
+                    <div className="flex flex-col items-center shrink-0 pt-0.5">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${cfg.color}`}>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">{cfg.icon}</svg>
+                      </div>
+                      {!isLast && <div className="w-px flex-1 mt-2 bg-gray-100 dark:bg-gray-800" />}
+                    </div>
+                    <div className="flex-1 pb-5 min-w-0">
+                      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${cfg.color}`}>
+                            {cfg.label}
+                          </span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">{relativeTime(a.created_at)}</span>
+                        </div>
+                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{a.content}</p>
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
+
+              if (entry.kind === 'deal') {
+                const d = entry.deal
+                return (
+                  <div key={`deal-${d.id}`} className="flex gap-3">
+                    <div className="flex flex-col items-center shrink-0 pt-0.5">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-primary-100 dark:bg-primary-950 text-primary-600 dark:text-primary-400">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                      </div>
+                      {!isLast && <div className="w-px flex-1 mt-2 bg-gray-100 dark:bg-gray-800" />}
+                    </div>
+                    <div className="flex-1 pb-5 min-w-0">
+                      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-primary-100 dark:bg-primary-950 text-primary-700 dark:text-primary-300">
+                            Deal Created
+                          </span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">{relativeTime(d.created_at)}</span>
+                        </div>
+                        <div className="flex items-center justify-between mt-1.5">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{d.name}</p>
+                          <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${STAGE_COLORS[d.stage] ?? ''}`}>
+                            {STAGE_LABELS[d.stage] ?? d.stage}
+                          </span>
+                        </div>
+                        {d.value > 0 && (
+                          <p className="text-sm font-bold text-primary-600 dark:text-primary-400 mt-0.5">${d.value.toLocaleString()}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
+
+              if (entry.kind === 'task') {
+                const t = entry.task
+                return (
+                  <div key={`task-${t.id}`} className="flex gap-3">
+                    <div className="flex flex-col items-center shrink-0 pt-0.5">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
+                      </div>
+                      {!isLast && <div className="w-px flex-1 mt-2 bg-gray-100 dark:bg-gray-800" />}
+                    </div>
+                    <div className="flex-1 pb-5 min-w-0">
+                      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
+                            Task Created
+                          </span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">{relativeTime(t.created_at)}</span>
+                        </div>
+                        <p className={`text-sm font-medium mt-1.5 ${t.completed ? 'line-through text-gray-400 dark:text-gray-600' : 'text-gray-900 dark:text-white'}`}>
+                          {t.title}
+                        </p>
+                        {t.due_date && (
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                            Due {new Date(t.due_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              }
+
+              return null
+            })}
+          </div>
+
         </div>
       )}
 
       {/* ── Deals tab ── */}
       {activeTab === 'deals' && (
         <div className="space-y-3">
-          {deals.length === 0 ? (
-            <div className="py-16 flex flex-col items-center text-center">
+
+          {/* Quick create bar */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex gap-2 flex-wrap">
+              {([
+                { label: 'Discovery Call', value: 0,     stage: 'lead'        as Deal['stage'] },
+                { label: 'Proposal',       value: 5000,  stage: 'proposal'    as Deal['stage'] },
+                { label: 'Contract',       value: 10000, stage: 'negotiation' as Deal['stage'] },
+              ] as const).map(tpl => (
+                <button
+                  key={tpl.label}
+                  onClick={() => openQuickDeal(tpl.label, tpl.value, tpl.stage)}
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                >
+                  {tpl.label}
+                  {tpl.value > 0 && <span className="text-gray-400 dark:text-gray-500 ml-0.5">· ${(tpl.value / 1000).toFixed(0)}k</span>}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => openQuickDeal()}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Quick Create Deal
+            </button>
+          </div>
+
+          {/* Inline form */}
+          {showQuickDeal && (
+            <div className="bg-white dark:bg-gray-900 border border-primary-200 dark:border-primary-800 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">New Deal</p>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Deal Name</label>
+                <input
+                  type="text"
+                  value={qdName}
+                  onChange={e => setQdName(e.target.value)}
+                  placeholder="Deal name..."
+                  autoFocus
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Value ($)</label>
+                  <input
+                    type="number"
+                    value={qdValue}
+                    onChange={e => setQdValue(e.target.value)}
+                    placeholder="0"
+                    min="0"
+                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Stage</label>
+                  <select
+                    value={qdStage}
+                    onChange={e => setQdStage(e.target.value as Deal['stage'])}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  >
+                    {Object.entries(STAGE_LABELS).map(([v, l]) => (
+                      <option key={v} value={v}>{l}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  onClick={handleQuickDealCreate}
+                  disabled={!qdName.trim() || qdSaving}
+                  className="px-3.5 py-2 text-xs font-semibold text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                >
+                  {qdSaving ? 'Creating...' : 'Create Deal'}
+                </button>
+                <button
+                  onClick={() => setShowQuickDeal(false)}
+                  className="px-3.5 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {deals.length === 0 && !showQuickDeal && (
+            <div className="py-12 flex flex-col items-center text-center">
               <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-3">
                 <svg className="w-6 h-6 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
               </div>
               <p className="text-sm font-semibold text-gray-900 dark:text-white">No deals yet</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Deals linked to this contact will appear here.</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Use the templates or button above to create your first deal.</p>
             </div>
-          ) : (
-            deals.map(deal => (
-              <div key={deal.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{deal.name}</p>
-                  <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${STAGE_COLORS[deal.stage] ?? ''}`}>
-                    {STAGE_LABELS[deal.stage] ?? deal.stage}
-                  </span>
-                </div>
-                {deal.value > 0 && (
-                  <p className="text-sm font-bold text-primary-600 dark:text-primary-400 mt-1">
-                    ${deal.value.toLocaleString()}
-                  </p>
-                )}
-              </div>
-            ))
           )}
+
+          {/* Deals list */}
+          {deals.map(deal => (
+            <div key={deal.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">{deal.name}</p>
+                <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${STAGE_COLORS[deal.stage] ?? ''}`}>
+                  {STAGE_LABELS[deal.stage] ?? deal.stage}
+                </span>
+              </div>
+              {deal.value > 0 && (
+                <p className="text-sm font-bold text-primary-600 dark:text-primary-400 mt-1">
+                  ${deal.value.toLocaleString()}
+                </p>
+              )}
+            </div>
+          ))}
+
         </div>
       )}
 
@@ -509,7 +881,7 @@ export default function ContactDetail() {
 
       {/* Toast */}
       {toast && (
-        <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />
+        <Toast message={toast.message} type={toast.type} action={toast.action} onDismiss={() => setToast(null)} />
       )}
     </div>
   )

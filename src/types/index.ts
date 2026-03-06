@@ -80,6 +80,15 @@ export interface GmailConnection {
   last_sync?: string
 }
 
+export interface ActivityLog {
+  id: string
+  user_id: string
+  contact_id: string
+  type: 'call' | 'meeting' | 'note' | 'email'
+  content: string
+  created_at: string
+}
+
 export interface EmailLog {
   id: string
   user_id: string
