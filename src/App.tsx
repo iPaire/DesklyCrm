@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { useAuthStore } from './store/authStore'
 import { useDarkModeStore } from './store/darkModeStore'
+import { useBillingStore } from './store/billingStore'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
 import Home from './pages/Home'
@@ -17,6 +18,7 @@ import Tasks from './pages/Tasks'
 import Settings from './pages/Settings'
 import GmailCallback from './pages/GmailCallback'
 import Onboarding from './pages/Onboarding'
+import Invite from './pages/Invite'
 import NotFound from './pages/NotFound'
 import Privacy from './pages/Privacy'
 import Terms from './pages/Terms'
@@ -26,18 +28,25 @@ export default function App() {
   const setUser = useAuthStore((s) => s.setUser)
   const setLoading = useAuthStore((s) => s.setLoading)
   const { isDark, setDark } = useDarkModeStore()
+  const { fetchBilling, clearBilling } = useBillingStore()
 
-  // Sync auth state
+  // Sync auth state and load billing
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       setLoading(false)
+      if (session?.user) fetchBilling(session.user.id)
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
+      if (session?.user) {
+        fetchBilling(session.user.id)
+      } else {
+        clearBilling()
+      }
     })
     return () => subscription.unsubscribe()
-  }, [setUser, setLoading])
+  }, [setUser, setLoading, fetchBilling, clearBilling])
 
   // Follow OS preference changes (only if user hasn't manually set a preference)
   useEffect(() => {
@@ -64,6 +73,8 @@ export default function App() {
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/contact" element={<Contact />} />
+
+        <Route path="/invite/:token" element={<Invite />} />
 
         <Route element={<ProtectedRoute />}>
           {/* Full-screen pages - outside Layout */}

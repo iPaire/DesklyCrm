@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useDarkModeStore } from '../store/darkModeStore'
+import { useBillingStore } from '../store/billingStore'
 import { NotificationBell } from './NotificationBell'
+import { TrialGate } from './TrialGate'
 
 const navItems = [
   {
@@ -75,6 +77,8 @@ export default function Layout() {
   const signOut = useAuthStore((s) => s.signOut)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { isDark, toggle: toggleDark } = useDarkModeStore()
+  const { trialInfo, team } = useBillingStore()
+  const isSubscribed = team?.subscription_status === 'active'
 
   const handleSignOut = async () => {
     await signOut()
@@ -119,6 +123,27 @@ export default function Layout() {
 
       {/* Bottom section */}
       <div className="px-3 pb-4 space-y-1 border-t border-gray-100 dark:border-gray-800 pt-3">
+        {/* Trial banner */}
+        {!isSubscribed && trialInfo && (
+          <button
+            onClick={() => { navigate('/settings'); setSidebarOpen(false) }}
+            className={`w-full text-left px-3 py-2 rounded-lg text-xs transition-colors ${
+              trialInfo.isExpired
+                ? 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 hover:bg-red-100'
+                : trialInfo.daysRemaining <= 3
+                  ? 'bg-orange-50 dark:bg-orange-950/40 text-orange-700 dark:text-orange-300 hover:bg-orange-100'
+                  : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 hover:bg-amber-100'
+            }`}
+          >
+            <p className="font-semibold">
+              {trialInfo.isExpired ? 'Trial ended' : `${trialInfo.daysRemaining} day${trialInfo.daysRemaining !== 1 ? 's' : ''} left in trial`}
+            </p>
+            <p className="opacity-75 mt-0.5">
+              {trialInfo.isExpired ? 'Upgrade to continue →' : 'Upgrade to Pro →'}
+            </p>
+          </button>
+        )}
+
         {/* Notifications */}
         <NotificationBell />
 
@@ -215,7 +240,9 @@ export default function Layout() {
           [&::-webkit-scrollbar-thumb:hover]:bg-gray-400
           dark:[&::-webkit-scrollbar-thumb]:bg-gray-600
           dark:[&::-webkit-scrollbar-thumb:hover]:bg-gray-500">
-          <Outlet />
+          <TrialGate>
+            <Outlet />
+          </TrialGate>
         </main>
       </div>
     </div>

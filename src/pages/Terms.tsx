@@ -54,8 +54,9 @@ export default function Terms() {
             <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-3">4. Free Trial & Billing</h2>
             <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
               Deskly offers a 14-day free trial with no credit card required. After the trial period, continued use
-              of the Service requires a paid subscription at $8 per user per month. Subscriptions are billed monthly
-              and can be cancelled at any time. Refunds are issued on a case-by-case basis - contact us to discuss.
+              of the Service requires a paid subscription at $10 per user per month. Subscriptions are billed monthly
+              and can be cancelled at any time. Payments are processed securely by Stripe. Refunds are issued on a
+              case-by-case basis - contact us to discuss.
             </p>
           </section>
 

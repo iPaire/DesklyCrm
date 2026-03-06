@@ -291,7 +291,7 @@ export default function Home() {
                 <p className="text-xs font-bold uppercase tracking-widest text-primary-200 mb-4 relative">With Deskly</p>
                 <div className="space-y-4 relative">
                   {[
-                    { check: '✅', title: '$8/user/mo', desc: 'Flat pricing, no surprises. Everything included.' },
+                    { check: '✅', title: '$10/user/mo', desc: 'Flat pricing, no surprises. Everything included.' },
                     { check: '✅', title: 'Set up in 5 minutes', desc: 'Guided onboarding. Invite your team the same day.' },
                     { check: '✅', title: 'Everything you need', desc: 'Contacts, deals, tasks, Gmail sync, automations.' },
                   ].map(s => (
@@ -307,7 +307,7 @@ export default function Home() {
 
                 {/* Price tag */}
                 <div className="mt-6 pt-4 border-t border-primary-500/50 relative">
-                  <p className="text-4xl font-black text-white">$8</p>
+                  <p className="text-4xl font-black text-white">$10</p>
                   <p className="text-primary-200 text-sm">per user / month</p>
                 </div>
               </div>
@@ -462,7 +462,7 @@ export default function Home() {
             <div className="p-8">
               <div className="mb-6">
                 <div className="flex items-end justify-center gap-1 mb-1">
-                  <span className="text-5xl font-black text-gray-900 dark:text-white">$8</span>
+                  <span className="text-5xl font-black text-gray-900 dark:text-white">$10</span>
                   <span className="text-gray-400 dark:text-gray-500 mb-2">/user/mo</span>
                 </div>
                 <p className="text-sm text-gray-400 dark:text-gray-500">After your free trial</p>

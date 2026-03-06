@@ -2,6 +2,8 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
+import { useBillingStore, selectIsSubscribed } from '../store/billingStore'
+import { inviteMember, removeMember, startStripeCheckout } from '../lib/billing'
 import { Toast } from '../components/Toast'
 import { GmailSettingsPanel } from '../components/GmailSettingsPanel'
 import { AutomationsPanel } from '../components/AutomationsPanel'
@@ -489,23 +491,83 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
 export default function Settings() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const user   = useAuthStore(s => s.user)
+  const user    = useAuthStore(s => s.user)
   const signOut = useAuthStore(s => s.signOut)
+  const { team, members, trialInfo, fetchBilling, setMembers } = useBillingStore()
+  const subscribed = useBillingStore(selectIsSubscribed)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const [upgradeLoading, setUpgradeLoading] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteLoading, setInviteLoading] = useState(false)
+  const [removingId, setRemovingId] = useState<string | null>(null)
 
-  // Show success toast if redirected back from Gmail OAuth
+  // Load billing data
+  useEffect(() => {
+    if (user) fetchBilling(user.id)
+  }, [user, fetchBilling])
+
+  // Handle redirects
   useEffect(() => {
     if (searchParams.get('gmail') === 'connected') {
       setToast({ message: 'Gmail connected! Click "Sync Now" to import emails.', type: 'success' })
       navigate('/settings', { replace: true })
     }
-  }, [searchParams, navigate])
+    if (searchParams.get('billing') === 'success') {
+      setToast({ message: 'Subscription activated! Welcome to Pro.', type: 'success' })
+      navigate('/settings', { replace: true })
+      if (user) fetchBilling(user.id)
+    }
+    if (searchParams.get('billing') === 'canceled') {
+      setToast({ message: 'Checkout canceled - your trial is still active.', type: 'error' })
+      navigate('/settings', { replace: true })
+    }
+  }, [searchParams, navigate, user, fetchBilling])
 
   const initials = user?.email?.[0].toUpperCase() ?? 'U'
 
   const handleSignOut = async () => {
     await signOut()
     navigate('/login')
+  }
+
+  const handleUpgrade = async () => {
+    setUpgradeLoading(true)
+    const { url, error } = await startStripeCheckout()
+    if (error || !url) {
+      setToast({ message: error ?? 'Could not start checkout. Try again.', type: 'error' })
+      setUpgradeLoading(false)
+      return
+    }
+    window.location.href = url
+  }
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!team) return
+    setInviteLoading(true)
+    const { member, error } = await inviteMember(team.id, inviteEmail)
+    if (error) {
+      setToast({ message: error.message, type: 'error' })
+    } else if (member) {
+      setMembers([...members, member])
+      setInviteEmail('')
+      setToast({
+        message: `Invite sent to ${member.email} - share the link: ${window.location.origin}/invite/${member.invite_token}`,
+        type: 'success',
+      })
+    }
+    setInviteLoading(false)
+  }
+
+  const handleRemoveMember = async (memberId: string) => {
+    setRemovingId(memberId)
+    const { error } = await removeMember(memberId)
+    if (error) {
+      setToast({ message: error.message, type: 'error' })
+    } else {
+      setMembers(members.filter(m => m.id !== memberId))
+    }
+    setRemovingId(null)
   }
 
   return (
@@ -536,9 +598,15 @@ export default function Settings() {
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{user?.email}</p>
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-primary-700 dark:text-primary-300 bg-primary-100 dark:bg-primary-950 px-2 py-0.5 rounded-full mt-0.5">
-              Free Trial
-            </span>
+            {subscribed ? (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-full mt-0.5">
+                Pro
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950 px-2 py-0.5 rounded-full mt-0.5">
+                Free Trial {trialInfo ? `· ${trialInfo.daysRemaining}d left` : ''}
+              </span>
+            )}
           </div>
         </div>
 
@@ -584,52 +652,93 @@ export default function Settings() {
           </svg>
         }
       >
-        {/* Plan card */}
-        <div className="rounded-xl bg-gradient-to-br from-primary-50 to-violet-50 dark:from-primary-950/40 dark:to-violet-950/30 border border-primary-100 dark:border-primary-900/50 p-4 mb-4">
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <p className="text-xs font-semibold text-primary-600 dark:text-primary-400 uppercase tracking-wide">Current Plan</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white mt-0.5">Free Trial</p>
+        {subscribed ? (
+          /* ── Pro plan ── */
+          <div className="rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30 border border-emerald-100 dark:border-emerald-900/50 p-4 mb-4">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Current Plan</p>
+                <p className="text-xl font-bold text-gray-900 dark:text-white mt-0.5">Deskly Pro</p>
+              </div>
+              <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-2.5 py-1 rounded-full">
+                Active
+              </span>
             </div>
-            <span className="text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-2.5 py-1 rounded-full">
-              14 days left
-            </span>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              {team?.seats ?? 1} seat{(team?.seats ?? 1) > 1 ? 's' : ''} · ${(team?.seats ?? 1) * 10}/month
+            </p>
+            <ul className="mt-3 space-y-1">
+              {['Unlimited contacts', 'Kanban deal pipeline', 'Task management', 'Team collaboration', 'Gmail sync & automations'].map(f => (
+                <li key={f} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                  <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                  {f}
+                </li>
+              ))}
+            </ul>
           </div>
+        ) : (
+          /* ── Trial / upgrade ── */
+          <div className="rounded-xl bg-gradient-to-br from-primary-50 to-violet-50 dark:from-primary-950/40 dark:to-violet-950/30 border border-primary-100 dark:border-primary-900/50 p-4 mb-4">
+            <div className="flex items-start justify-between mb-3">
+              <div>
+                <p className="text-xs font-semibold text-primary-600 dark:text-primary-400 uppercase tracking-wide">Current Plan</p>
+                <p className="text-xl font-bold text-gray-900 dark:text-white mt-0.5">Free Trial</p>
+              </div>
+              {trialInfo && (
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                  trialInfo.isExpired
+                    ? 'text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-950/60'
+                    : trialInfo.daysRemaining <= 3
+                      ? 'text-orange-700 dark:text-orange-300 bg-orange-100 dark:bg-orange-950/60'
+                      : 'text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60'
+                }`}>
+                  {trialInfo.isExpired ? 'Expired' : `${trialInfo.daysRemaining} day${trialInfo.daysRemaining !== 1 ? 's' : ''} left`}
+                </span>
+              )}
+            </div>
 
-          {/* Progress bar */}
-          <div className="mb-3">
-            <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-              <span>Day 1 of 14</span>
-              <span>Expires soon</span>
-            </div>
-            <div className="h-1.5 bg-white/60 dark:bg-gray-900/40 rounded-full overflow-hidden">
-              <div className="h-full w-[7%] bg-primary-500 rounded-full" />
-            </div>
+            {trialInfo && (
+              <div className="mb-3">
+                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  <span>Day {trialInfo.daysElapsed} of {trialInfo.totalDays}</span>
+                  <span>{trialInfo.isExpired ? 'Trial ended' : 'Trial active'}</span>
+                </div>
+                <div className="h-1.5 bg-white/60 dark:bg-gray-900/40 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${trialInfo.isExpired ? 'bg-red-500' : 'bg-primary-500'}`}
+                    style={{ width: `${trialInfo.progress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <ul className="space-y-1">
+              {['Unlimited contacts', 'Kanban deal pipeline', 'Task management', 'Gmail sync & automations'].map(f => (
+                <li key={f} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                  <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                  {f}
+                </li>
+              ))}
+            </ul>
           </div>
+        )}
 
-          <ul className="space-y-1">
-            {[
-              'Up to 100 contacts',
-              'Kanban deal pipeline',
-              'Task management',
-              'Email support',
-            ].map(f => (
-              <li key={f} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-                <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                </svg>
-                {f}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <button
-          onClick={() => alert('Stripe integration coming soon - Pro plan will unlock unlimited contacts, team members, and more.')}
-          className="w-full py-2.5 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white text-sm font-semibold rounded-xl transition-all shadow-sm hover:shadow-md"
-        >
-          Upgrade to Pro →
-        </button>
+        {!subscribed && (
+          <button
+            onClick={handleUpgrade}
+            disabled={upgradeLoading}
+            className="w-full py-2.5 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white text-sm font-semibold rounded-xl transition-all shadow-sm hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+          >
+            {upgradeLoading && (
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            )}
+            {upgradeLoading ? 'Redirecting…' : 'Upgrade to Pro - $10/user/month →'}
+          </button>
+        )}
       </SectionCard>
 
       {/* ── Team ── */}
@@ -643,28 +752,88 @@ export default function Settings() {
         }
       >
         {/* Member list */}
-        <div className="flex items-center gap-3 mb-4 px-3 py-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
-          <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-950 flex items-center justify-center shrink-0">
-            <span className="text-primary-700 dark:text-primary-300 text-xs font-bold">{initials}</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{user?.email}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Owner</p>
-          </div>
-          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full">
-            Active
-          </span>
+        <div className="space-y-2 mb-4">
+          {members.map(m => {
+            const isOwner = m.role === 'owner'
+            const memberInitial = m.email[0].toUpperCase()
+            return (
+              <div key={m.id} className="flex items-center gap-3 px-3 py-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+                <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-950 flex items-center justify-center shrink-0">
+                  <span className="text-primary-700 dark:text-primary-300 text-xs font-bold">{memberInitial}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{m.email}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">{isOwner ? 'Owner' : 'Member'}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {m.status === 'pending' ? (
+                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-full">
+                      Pending
+                    </span>
+                  ) : (
+                    <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full">
+                      Active
+                    </span>
+                  )}
+                  {!isOwner && (
+                    <button
+                      onClick={() => handleRemoveMember(m.id)}
+                      disabled={removingId === m.id}
+                      className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors disabled:opacity-40"
+                      title="Remove member"
+                    >
+                      {removingId === m.id ? (
+                        <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin inline-block" />
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
 
-        <button
-          onClick={() => alert('Team invitations coming soon - upgrade to Pro to invite teammates.')}
-          className="w-full flex items-center justify-center gap-2 py-2.5 border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-primary-400 dark:hover:border-primary-600 text-gray-500 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 text-sm font-medium rounded-xl transition-colors"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          Invite team member
-        </button>
+        {/* Pricing hint */}
+        {subscribed && team && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 text-center">
+            {members.filter(m => m.status === 'active').length} active seat{members.filter(m => m.status === 'active').length !== 1 ? 's' : ''} · $10/seat/month
+          </p>
+        )}
+
+        {/* Invite form */}
+        <form onSubmit={handleInvite} className="flex gap-2">
+          <input
+            type="email"
+            required
+            value={inviteEmail}
+            onChange={e => setInviteEmail(e.target.value)}
+            placeholder="teammate@example.com"
+            className="flex-1 px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
+          />
+          <button
+            type="submit"
+            disabled={inviteLoading}
+            className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-xl transition-colors disabled:opacity-60 flex items-center gap-1.5"
+          >
+            {inviteLoading ? (
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            )}
+            Invite
+          </button>
+        </form>
+
+        {/* Invite link explanation */}
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 text-center">
+          An invite link will be shown - share it with your teammate.
+        </p>
       </SectionCard>
 
       {/* ── Automations ── */}

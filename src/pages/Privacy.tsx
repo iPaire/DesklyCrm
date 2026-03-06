@@ -52,9 +52,21 @@ export default function Privacy() {
             <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-3">4. Data Sharing</h2>
             <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
               We do not sell, trade, or rent your personal information to third parties. We may share data with trusted
-              service providers who assist us in operating our platform (e.g., Supabase for database hosting, Google for
-              Gmail OAuth), under strict confidentiality obligations.
+              service providers who assist us in operating our platform, under strict confidentiality obligations:
             </p>
+            <ul className="space-y-2 text-gray-600 dark:text-gray-400 mt-3">
+              {[
+                'Supabase - database hosting and authentication.',
+                'Google - Gmail OAuth integration (only when you connect your Gmail account).',
+                'Stripe - payment processing. When you subscribe, your payment information is handled directly by Stripe. We never store your card details. Stripe\'s privacy policy applies to payment data: stripe.com/privacy.',
+                'Resend - transactional email delivery (e.g., trial reminders, account notifications).',
+              ].map(item => (
+                <li key={item} className="flex items-start gap-2">
+                  <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary-500 shrink-0" />
+                  {item}
+                </li>
+              ))}
+            </ul>
           </section>
 
           <section>
