@@ -1,10 +1,17 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 import { Toast } from '../components/Toast'
 import { GmailSettingsPanel } from '../components/GmailSettingsPanel'
 import { AutomationsPanel } from '../components/AutomationsPanel'
+import {
+  MAX_CUSTOM_COLS,
+  getColumnDefs,
+  saveColumnDefs,
+  labelToKey,
+  generateKey,
+} from '../lib/contactColumns'
 
 // ─── CSV parser ────────────────────────────────────────────────────────────────
 
@@ -98,16 +105,29 @@ const IMPORT_FIELDS: { key: string; label: string; required?: boolean }[] = [
 
 type ImportStatus = 'idle' | 'importing' | 'done'
 
+interface CustomImportField {
+  csvCol: string   // CSV column header
+  label: string    // display / column def label
+  enabled: boolean
+}
+
 function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 'error') => void }) {
   const user = useAuthStore(s => s.user)
   const fileRef = useRef<HTMLInputElement>(null)
   const [file,    setFile]    = useState<File | null>(null)
   const [parsed,  setParsed]  = useState<ParsedCSV | null>(null)
   const [mapping, setMapping] = useState<Record<string, string>>({})
+  const [customFields, setCustomFields] = useState<CustomImportField[]>([])
   const [dragging, setDragging] = useState(false)
   const [status,  setStatus]  = useState<ImportStatus>('idle')
   const [count,   setCount]   = useState(0)
   const [error,   setError]   = useState('')
+
+  // How many custom fields are currently enabled
+  const enabledCustomCount = useMemo(
+    () => customFields.filter(f => f.enabled).length,
+    [customFields],
+  )
 
   const load = (f: File) => {
     if (!f.name.match(/\.(csv|txt)$/i)) { setError('Please upload a .csv file.'); return }
@@ -117,8 +137,15 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
     reader.onload = e => {
       const csv = parseCSV(e.target?.result as string)
       if (csv.headers.length === 0) { setError('Could not parse CSV - check the file format.'); return }
+      const detected = autoDetect(csv.headers)
+      const usedCols = new Set(Object.values(detected))
+      // Extra columns not auto-mapped to standard fields
+      const extras: CustomImportField[] = csv.headers
+        .filter(h => !usedCols.has(h))
+        .map(h => ({ csvCol: h, label: h, enabled: false }))
       setParsed(csv)
-      setMapping(autoDetect(csv.headers))
+      setMapping(detected)
+      setCustomFields(extras)
       setStatus('idle')
       setCount(0)
     }
@@ -131,20 +158,43 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
     if (f) load(f)
   }
 
+  const toggleCustomField = (csvCol: string) => {
+    setCustomFields(prev => prev.map(f => {
+      if (f.csvCol !== csvCol) return f
+      // Can only enable up to MAX_CUSTOM_COLS
+      if (!f.enabled && enabledCustomCount >= MAX_CUSTOM_COLS) return f
+      return { ...f, enabled: !f.enabled }
+    }))
+  }
+
+  const updateCustomLabel = (csvCol: string, label: string) => {
+    setCustomFields(prev => prev.map(f => f.csvCol === csvCol ? { ...f, label } : f))
+  }
+
   const runImport = async () => {
     if (!parsed || !user) return
     if (!mapping.name) { setError('The "Name" column is required.'); return }
     setStatus('importing'); setError('')
 
+    const enabledExtra = customFields.filter(f => f.enabled)
+
     const records = parsed.rows
-      .map(row => ({
-        user_id: user.id,
-        name:    row[mapping.name]?.trim()    || '',
-        email:   mapping.email   ? (row[mapping.email]?.trim()   || null) : null,
-        phone:   mapping.phone   ? (row[mapping.phone]?.trim()   || null) : null,
-        company: mapping.company ? (row[mapping.company]?.trim() || null) : null,
-        notes:   mapping.notes   ? (row[mapping.notes]?.trim()   || null) : null,
-      }))
+      .map(row => {
+        const custom_fields: Record<string, string> = {}
+        for (const cf of enabledExtra) {
+          const val = row[cf.csvCol]?.trim()
+          if (val) custom_fields[labelToKey(cf.label)] = val
+        }
+        return {
+          user_id: user.id,
+          name:    row[mapping.name]?.trim()    || '',
+          email:   mapping.email   ? (row[mapping.email]?.trim()   || null) : null,
+          phone:   mapping.phone   ? (row[mapping.phone]?.trim()   || null) : null,
+          company: mapping.company ? (row[mapping.company]?.trim() || null) : null,
+          notes:   mapping.notes   ? (row[mapping.notes]?.trim()   || null) : null,
+          custom_fields: Object.keys(custom_fields).length > 0 ? custom_fields : {},
+        }
+      })
       .filter(r => r.name)
 
     let imported = 0
@@ -155,6 +205,21 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
       imported += Math.min(CHUNK, records.length - i)
     }
 
+    // Auto-update column defs in localStorage so custom columns appear in the table
+    if (enabledExtra.length > 0) {
+      const existingDefs = getColumnDefs(user.id)
+      const existingKeys = existingDefs.map(d => d.key)
+      let updatedDefs = [...existingDefs]
+      for (const cf of enabledExtra) {
+        if (updatedDefs.length >= MAX_CUSTOM_COLS) break
+        const key = generateKey(cf.label, updatedDefs.map(d => d.key))
+        if (!existingKeys.includes(labelToKey(cf.label))) {
+          updatedDefs.push({ key, label: cf.label })
+        }
+      }
+      saveColumnDefs(user.id, updatedDefs)
+    }
+
     setCount(imported)
     setStatus('done')
     onToast(`Imported ${imported} contact${imported !== 1 ? 's' : ''}!`, 'success')
@@ -163,6 +228,7 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
 
   const reset = () => {
     setFile(null); setParsed(null); setMapping({})
+    setCustomFields([])
     setStatus('idle'); setCount(0); setError('')
   }
 
@@ -190,6 +256,12 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
   if (parsed) {
     const preview = parsed.rows.slice(0, 3)
     const hasName = !!mapping.name
+    const allMappedCols = new Set(Object.values(mapping).filter(Boolean))
+    const previewCols = [
+      ...IMPORT_FIELDS.filter(f => mapping[f.key]),
+      ...customFields.filter(f => f.enabled).map(f => ({ key: f.csvCol, label: f.label })),
+    ]
+
     return (
       <div className="space-y-4">
         {/* File banner */}
@@ -208,10 +280,10 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
           </button>
         </div>
 
-        {/* Column mapping */}
+        {/* Standard column mapping */}
         <div>
           <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-            Column mapping
+            Standard fields
           </p>
           <div className="space-y-1.5">
             {IMPORT_FIELDS.map(f => (
@@ -222,12 +294,24 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
                 </span>
                 <select
                   value={mapping[f.key] ?? ''}
-                  onChange={e => setMapping(prev => ({ ...prev, [f.key]: e.target.value }))}
+                  onChange={e => {
+                    const newVal = e.target.value
+                    setMapping(prev => ({ ...prev, [f.key]: newVal }))
+                    // Update customFields: remove newly mapped col, add back old one
+                    setCustomFields(prev => {
+                      const oldVal = mapping[f.key]
+                      let next = prev.filter(cf => cf.csvCol !== newVal)
+                      if (oldVal && !Object.values({ ...mapping, [f.key]: newVal }).includes(oldVal)) {
+                        next = [...next, { csvCol: oldVal, label: oldVal, enabled: false }]
+                      }
+                      return next
+                    })
+                  }}
                   className="flex-1 px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
                 >
                   <option value="">- skip -</option>
                   {parsed.headers.map(h => (
-                    <option key={h} value={h}>{h}</option>
+                    <option key={h} value={h} disabled={allMappedCols.has(h) && mapping[f.key] !== h}>{h}</option>
                   ))}
                 </select>
                 {mapping[f.key] && (
@@ -240,6 +324,49 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
           </div>
         </div>
 
+        {/* Extra columns → custom fields */}
+        {customFields.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                Extra columns → custom fields
+              </p>
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                {enabledCustomCount}/{MAX_CUSTOM_COLS} selected
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              {customFields.map(cf => (
+                <div key={cf.csvCol} className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={cf.enabled}
+                    onChange={() => toggleCustomField(cf.csvCol)}
+                    disabled={!cf.enabled && enabledCustomCount >= MAX_CUSTOM_COLS}
+                    className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 focus:ring-offset-0 cursor-pointer disabled:opacity-40"
+                  />
+                  <span className="text-xs text-gray-500 dark:text-gray-400 w-24 shrink-0 truncate" title={cf.csvCol}>
+                    {cf.csvCol}
+                  </span>
+                  {cf.enabled ? (
+                    <input
+                      type="text"
+                      value={cf.label}
+                      onChange={e => updateCustomLabel(cf.csvCol, e.target.value)}
+                      placeholder="Column label"
+                      className="flex-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-primary-500 transition-colors"
+                    />
+                  ) : (
+                    <span className="flex-1 text-xs text-gray-400 dark:text-gray-600 italic">
+                      {enabledCustomCount >= MAX_CUSTOM_COLS ? 'limit reached' : 'not imported'}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Preview rows */}
         {preview.length > 0 && mapping.name && (
           <div>
@@ -251,7 +378,7 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
                 <table className="w-full text-xs">
                   <thead className="bg-gray-50 dark:bg-gray-800">
                     <tr>
-                      {IMPORT_FIELDS.filter(f => mapping[f.key]).map(f => (
+                      {previewCols.map(f => (
                         <th key={f.key} className="text-left px-3 py-2 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
                           {f.label}
                         </th>
@@ -262,8 +389,13 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
                     {preview.map((row, i) => (
                       <tr key={i}>
                         {IMPORT_FIELDS.filter(f => mapping[f.key]).map(f => (
-                          <td key={f.key} className="px-3 py-2 text-gray-700 dark:text-gray-300 max-w-[160px] truncate">
+                          <td key={f.key} className="px-3 py-2 text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
                             {row[mapping[f.key]] || <span className="text-gray-300 dark:text-gray-600">-</span>}
+                          </td>
+                        ))}
+                        {customFields.filter(f => f.enabled).map(cf => (
+                          <td key={cf.csvCol} className="px-3 py-2 text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
+                            {row[cf.csvCol] || <span className="text-gray-300 dark:text-gray-600">-</span>}
                           </td>
                         ))}
                       </tr>
@@ -300,7 +432,7 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
     <div className="space-y-3">
       <p className="text-xs text-gray-500 dark:text-gray-400">
         Upload a CSV exported from HubSpot, Salesforce, Pipedrive, or any CRM.
-        We'll auto-detect the column names.
+        We'll auto-detect standard fields and let you import all other columns too.
       </p>
 
       <label

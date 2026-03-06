@@ -14,6 +14,7 @@ export interface Contact {
   phone?: string
   company?: string
   notes?: string
+  custom_fields?: Record<string, string>
   created_at: string
   updated_at: string
 }
