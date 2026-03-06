@@ -500,6 +500,9 @@ export default function Settings() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteConfirm, setDeleteConfirm] = useState('')
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   // Load billing data
   useEffect(() => {
@@ -568,6 +571,35 @@ export default function Settings() {
       setMembers(members.filter(m => m.id !== memberId))
     }
     setRemovingId(null)
+  }
+
+  const handleDeleteAccount = async () => {
+    if (!user) return
+    setDeleteLoading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-account`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${session?.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+      const json = await res.json()
+      if (!res.ok) {
+        setToast({ message: json.error ?? 'Failed to delete account.', type: 'error' })
+        setDeleteLoading(false)
+        return
+      }
+      await signOut()
+      navigate('/login')
+    } catch {
+      setToast({ message: 'An unexpected error occurred.', type: 'error' })
+      setDeleteLoading(false)
+    }
   }
 
   return (
@@ -909,6 +941,94 @@ export default function Settings() {
           </div>
         </div>
       </SectionCard>
+
+      {/* ── Danger Zone ── */}
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-red-200 dark:border-red-900/50 overflow-hidden">
+        <div className="flex items-center gap-3 px-5 py-4 border-b border-red-100 dark:border-red-900/40">
+          <div className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-950/50 flex items-center justify-center text-red-500 dark:text-red-400">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-sm font-semibold text-red-600 dark:text-red-400">Danger Zone</h2>
+        </div>
+        <div className="p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">Delete Account</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Permanently delete your account and all associated data. This action cannot be undone.
+              </p>
+            </div>
+            <button
+              onClick={() => { setDeleteConfirm(''); setShowDeleteModal(true) }}
+              className="shrink-0 px-4 py-2 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-950/70 text-red-600 dark:text-red-400 text-sm font-semibold rounded-xl border border-red-200 dark:border-red-800 transition-colors"
+            >
+              Delete Account
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Delete Confirmation Modal ── */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => !deleteLoading && setShowDeleteModal(false)} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 w-full max-w-md p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950/50 flex items-center justify-center shrink-0">
+                <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white">Delete Account</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400">This is permanent and cannot be reversed.</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+              All your contacts, deals, tasks, emails, and billing data will be permanently deleted.
+              To confirm, type your email address below:
+            </p>
+
+            <p className="text-xs font-mono font-semibold text-gray-700 dark:text-gray-300 mb-2 select-all">
+              {user?.email}
+            </p>
+
+            <input
+              type="email"
+              value={deleteConfirm}
+              onChange={e => setDeleteConfirm(e.target.value)}
+              placeholder={user?.email ?? 'your@email.com'}
+              className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors mb-4"
+              disabled={deleteLoading}
+            />
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleteLoading}
+                className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-semibold rounded-xl transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleteConfirm !== user?.email || deleteLoading}
+                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {deleteLoading && (
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                )}
+                {deleteLoading ? 'Deleting…' : 'Delete Everything'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />
