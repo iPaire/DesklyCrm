@@ -50,14 +50,17 @@ CREATE TABLE IF NOT EXISTS team_members (
 
 ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
 
+-- SECURITY DEFINER function to check team ownership without triggering RLS on teams
+-- (avoids circular RLS: teams → team_members → teams → ∞ → 500)
+CREATE OR REPLACE FUNCTION get_team_owner_id(p_team_id uuid)
+RETURNS uuid AS $$
+  SELECT owner_id FROM teams WHERE id = p_team_id
+$$ LANGUAGE sql SECURITY DEFINER STABLE;
+
 -- Team owner can do everything with their team's members
 CREATE POLICY "team_owner_member_all" ON team_members
   FOR ALL USING (
-    EXISTS (
-      SELECT 1 FROM teams t
-      WHERE t.id = team_members.team_id
-        AND t.owner_id = auth.uid()
-    )
+    get_team_owner_id(team_members.team_id) = auth.uid()
   );
 
 -- Members can read their own record (so they can see their invite)
