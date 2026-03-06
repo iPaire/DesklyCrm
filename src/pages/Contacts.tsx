@@ -115,9 +115,11 @@ function ManageColumnsModal({
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
+  const MAX_LABEL_LEN = 20
+
   const handleAdd = () => {
     const trimmed = newLabel.trim()
-    if (!trimmed || columns.length >= MAX_CUSTOM_COLS) return
+    if (!trimmed || columns.length >= MAX_CUSTOM_COLS || trimmed.length > MAX_LABEL_LEN) return
     onAdd(trimmed)
     setNewLabel('')
   }
@@ -192,23 +194,29 @@ function ManageColumnsModal({
 
           {/* Add new */}
           {columns.length < MAX_CUSTOM_COLS ? (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newLabel}
-                onChange={(e) => setNewLabel(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleAdd() }}
-                placeholder="e.g. Location, Status..."
-                autoFocus
-                className={inputClass}
-              />
-              <button
-                onClick={handleAdd}
-                disabled={!newLabel.trim()}
-                className="px-3 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-40 transition-colors"
-              >
-                Add
-              </button>
+            <div className="space-y-1.5">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value.slice(0, MAX_LABEL_LEN))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleAdd() }}
+                  placeholder="e.g. Location, Status..."
+                  maxLength={MAX_LABEL_LEN}
+                  autoFocus
+                  className={inputClass}
+                />
+                <button
+                  onClick={handleAdd}
+                  disabled={!newLabel.trim()}
+                  className="px-3 py-2 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 disabled:opacity-40 transition-colors"
+                >
+                  Add
+                </button>
+              </div>
+              <p className={`text-xs text-right pr-1 ${newLabel.length >= MAX_LABEL_LEN ? 'text-amber-500 dark:text-amber-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                {newLabel.length}/{MAX_LABEL_LEN}
+              </p>
             </div>
           ) : (
             <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 rounded-lg">
@@ -258,16 +266,18 @@ export default function Contacts() {
   // Long press detection
   const pressTimerRef = useRef<number | null>(null)
   const longPressActivatedRef = useRef(false)
+  const pressStartXRef = useRef(0)
 
   // Toast
   const [toast, setToast] = useState<ToastState>(null)
 
-  // Sticky horizontal scrollbar
+  // Horizontal scrollbar (custom, cross-platform)
   const tableContainerRef = useRef<HTMLDivElement>(null)
-  const stickyScrollRef = useRef<HTMLDivElement>(null)
-  const syncingRef = useRef<'table' | 'sticky' | null>(null)
-  const [tableScrollWidth, setTableScrollWidth] = useState(0)
+  const customScrollbarRef = useRef<HTMLDivElement>(null)
   const [showStickyScroll, setShowStickyScroll] = useState(false)
+  const [scrollbarThumb, setScrollbarThumb] = useState({ width: 0, left: 0 })
+  const thumbDragRef = useRef({ active: false, startX: 0, startScrollLeft: 0 })
+  const dragScrollRef = useRef({ active: false, startX: 0, scrollLeft: 0, moved: false })
 
   // Load column defs from localStorage
   useEffect(() => {
@@ -278,23 +288,21 @@ export default function Contacts() {
     fetchContacts()
   }, [])
 
-  const onTableScroll = useCallback(() => {
-    if (syncingRef.current === 'sticky') return
-    syncingRef.current = 'table'
-    if (stickyScrollRef.current && tableContainerRef.current) {
-      stickyScrollRef.current.scrollLeft = tableContainerRef.current.scrollLeft
-    }
-    syncingRef.current = null
+  const updateScrollbar = useCallback(() => {
+    const el = tableContainerRef.current
+    if (!el) return
+    const isOverflow = el.scrollWidth > el.clientWidth + 1
+    setShowStickyScroll(isOverflow)
+    if (!isOverflow) return
+    const thumbFrac = el.clientWidth / el.scrollWidth
+    const maxScroll = el.scrollWidth - el.clientWidth
+    const thumbLeftFrac = maxScroll > 0 ? (el.scrollLeft / maxScroll) * (1 - thumbFrac) : 0
+    setScrollbarThumb({ width: thumbFrac * 100, left: thumbLeftFrac * 100 })
   }, [])
 
-  const onStickyScroll = useCallback(() => {
-    if (syncingRef.current === 'table') return
-    syncingRef.current = 'sticky'
-    if (tableContainerRef.current && stickyScrollRef.current) {
-      tableContainerRef.current.scrollLeft = stickyScrollRef.current.scrollLeft
-    }
-    syncingRef.current = null
-  }, [])
+  const onTableScroll = useCallback(() => {
+    updateScrollbar()
+  }, [updateScrollbar])
 
   const fetchContacts = async () => {
     setIsLoading(true)
@@ -363,24 +371,21 @@ export default function Contacts() {
     })
   }
 
-  // Measure table overflow for sticky scrollbar
+  // Measure table overflow → update custom scrollbar
   useEffect(() => {
     const el = tableContainerRef.current
     if (!el) return
-    const check = () => {
-      setTableScrollWidth(el.scrollWidth)
-      setShowStickyScroll(el.scrollWidth > el.clientWidth + 1)
-    }
-    check()
-    const ro = new ResizeObserver(check)
+    updateScrollbar()
+    const ro = new ResizeObserver(updateScrollbar)
     ro.observe(el)
     return () => ro.disconnect()
-  }, [filtered.length, customColumns.length, selecting, isLoading])
+  }, [filtered.length, customColumns.length, selecting, isLoading, updateScrollbar])
 
   // ── Long press ───────────────────────────────────────────────────────────
 
   const startPress = useCallback((contactId: string, e: React.PointerEvent) => {
-    if (e.button !== 0) return
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    pressStartXRef.current = e.clientX
     longPressActivatedRef.current = false
     pressTimerRef.current = window.setTimeout(() => {
       longPressActivatedRef.current = true
@@ -396,9 +401,57 @@ export default function Contacts() {
     }
   }, [])
 
+  // ── Drag-to-scroll (desktop mouse) + cancel long-press on horizontal move ─
+
+  useEffect(() => {
+    const el = tableContainerRef.current
+    if (!el) return
+    const THRESHOLD = 5
+
+    const handlePointerDown = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return
+      dragScrollRef.current = { active: true, startX: e.clientX, scrollLeft: el.scrollLeft, moved: false }
+    }
+
+    const handleDocPointerMove = (e: PointerEvent) => {
+      // Touch: cancel long-press when finger moves horizontally
+      if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+        if (pressTimerRef.current !== null && Math.abs(e.clientX - pressStartXRef.current) > THRESHOLD) {
+          cancelPress()
+        }
+        return
+      }
+      // Mouse: drag-to-scroll
+      if (!dragScrollRef.current.active) return
+      const dx = e.clientX - dragScrollRef.current.startX
+      if (!dragScrollRef.current.moved && Math.abs(dx) > THRESHOLD) {
+        dragScrollRef.current.moved = true
+        cancelPress()
+      }
+      if (dragScrollRef.current.moved) {
+        el.scrollLeft = dragScrollRef.current.scrollLeft - dx
+        updateScrollbar()
+      }
+    }
+
+    const handleDocPointerUp = () => {
+      dragScrollRef.current.active = false
+    }
+
+    el.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('pointermove', handleDocPointerMove)
+    document.addEventListener('pointerup', handleDocPointerUp)
+    return () => {
+      el.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('pointermove', handleDocPointerMove)
+      document.removeEventListener('pointerup', handleDocPointerUp)
+    }
+  }, [cancelPress, updateScrollbar])
+
   // ── Row click ────────────────────────────────────────────────────────────
 
   const handleRowClick = (contact: Contact) => {
+    if (dragScrollRef.current.moved) return // was a drag, not a click
     if (longPressActivatedRef.current) {
       longPressActivatedRef.current = false
       return
@@ -609,7 +662,7 @@ export default function Contacts() {
                 onClick={() => toggleSort(field)}
                 className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-lg transition-colors ${
                   sortBy === field
-                    ? 'bg-primary-100 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300'
+                    ? 'bg-primary-600 text-white shadow-sm'
                     : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
               >
@@ -637,7 +690,7 @@ export default function Contacts() {
                 onClick={() => setGroupBy(g)}
                 className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors ${
                   groupBy === g
-                    ? 'bg-primary-100 dark:bg-primary-950/50 text-primary-700 dark:text-primary-300'
+                    ? 'bg-primary-600 text-white shadow-sm'
                     : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
               >
@@ -682,8 +735,8 @@ export default function Contacts() {
             <div
               ref={tableContainerRef}
               onScroll={onTableScroll}
-              className="overflow-x-auto [&::-webkit-scrollbar]:hidden"
-              style={{ scrollbarWidth: 'none' }}
+              className="overflow-x-auto select-none [&::-webkit-scrollbar]:hidden"
+              style={{ scrollbarWidth: 'none', cursor: 'default' }}
             >
               <table className="w-full">
                 <thead>
@@ -827,20 +880,62 @@ export default function Contacts() {
               </table>
             </div>
 
-            {/* Sticky horizontal scrollbar - always visible at viewport bottom */}
-            {showStickyScroll && (
-              <div
-                ref={stickyScrollRef}
-                onScroll={onStickyScroll}
-                className="sticky bottom-0 overflow-x-scroll border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900"
-                style={{ height: '14px' }}
-              >
-                <div style={{ width: tableScrollWidth, height: '1px' }} />
-              </div>
-            )}
           </>
         )}
       </div>
+
+      {/* Custom horizontal scrollbar - visible on all platforms including mobile */}
+      {showStickyScroll && (
+        <div className="sticky bottom-4 flex justify-center mt-3 pointer-events-none">
+          <div
+            ref={customScrollbarRef}
+            className="relative pointer-events-auto rounded-full bg-gray-200 dark:bg-gray-700/80"
+            style={{ width: '60%', maxWidth: '560px', height: '20px' }}
+            onClick={(e) => {
+              const el = tableContainerRef.current
+              const track = customScrollbarRef.current
+              if (!el || !track) return
+              const rect = track.getBoundingClientRect()
+              const clickPct = (e.clientX - rect.left) / rect.width
+              el.scrollLeft = clickPct * (el.scrollWidth - el.clientWidth)
+              updateScrollbar()
+            }}
+          >
+            {/* Thumb */}
+            <div
+              className="absolute top-1.5 bottom-1.5 rounded-full bg-gray-400 dark:bg-gray-500 transition-colors hover:bg-gray-500 dark:hover:bg-gray-400 active:bg-gray-600 dark:active:bg-gray-300 cursor-grab active:cursor-grabbing"
+              style={{
+                left: `${scrollbarThumb.left}%`,
+                width: `${Math.max(scrollbarThumb.width, 8)}%`,
+                minWidth: '44px',
+              }}
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                const el = tableContainerRef.current
+                if (!el) return
+                thumbDragRef.current = { active: true, startX: e.clientX, startScrollLeft: el.scrollLeft }
+                ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+              }}
+              onPointerMove={(e) => {
+                if (!thumbDragRef.current.active) return
+                const el = tableContainerRef.current
+                const track = customScrollbarRef.current
+                if (!el || !track) return
+                const dx = e.clientX - thumbDragRef.current.startX
+                const thumbFrac = el.clientWidth / el.scrollWidth
+                const maxScroll = el.scrollWidth - el.clientWidth
+                const availableTrack = track.clientWidth * (1 - thumbFrac)
+                const ratio = availableTrack > 0 ? maxScroll / availableTrack : 0
+                el.scrollLeft = thumbDragRef.current.startScrollLeft + dx * ratio
+                updateScrollbar()
+              }}
+              onPointerUp={() => { thumbDragRef.current.active = false }}
+              onPointerCancel={() => { thumbDragRef.current.active = false }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Manage columns modal */}
       {showManageColumns && (

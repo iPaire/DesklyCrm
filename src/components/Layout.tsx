@@ -207,7 +207,14 @@ export default function Layout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-950">
+        <main className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-950
+          [&::-webkit-scrollbar]:w-1.5
+          [&::-webkit-scrollbar-track]:bg-transparent
+          [&::-webkit-scrollbar-thumb]:bg-gray-300
+          [&::-webkit-scrollbar-thumb]:rounded-full
+          [&::-webkit-scrollbar-thumb:hover]:bg-gray-400
+          dark:[&::-webkit-scrollbar-thumb]:bg-gray-600
+          dark:[&::-webkit-scrollbar-thumb:hover]:bg-gray-500">
           <Outlet />
         </main>
       </div>

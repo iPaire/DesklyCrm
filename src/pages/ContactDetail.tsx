@@ -582,16 +582,23 @@ export default function ContactDetail() {
               <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Log Activity</p>
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Type</label>
-                <select
-                  value={noteType}
-                  onChange={e => setNoteType(e.target.value as ActivityType)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                >
-                  <option value="note">Note</option>
-                  <option value="call">Call</option>
-                  <option value="meeting">Meeting</option>
-                  <option value="email">Email (manual)</option>
-                </select>
+                <div className="relative">
+                  <select
+                    value={noteType}
+                    onChange={e => setNoteType(e.target.value as ActivityType)}
+                    className="w-full appearance-none px-3 py-2 pr-8 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent cursor-pointer transition-colors"
+                  >
+                    <option value="note">Note</option>
+                    <option value="call">Call</option>
+                    <option value="meeting">Meeting</option>
+                    <option value="email">Email (manual)</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center">
+                    <svg className="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Content</label>
@@ -827,15 +834,22 @@ export default function ContactDetail() {
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Stage</label>
-                  <select
-                    value={qdStage}
-                    onChange={e => setQdStage(e.target.value as Deal['stage'])}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  >
-                    {Object.entries(STAGE_LABELS).map(([v, l]) => (
-                      <option key={v} value={v}>{l}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={qdStage}
+                      onChange={e => setQdStage(e.target.value as Deal['stage'])}
+                      className="w-full appearance-none px-3 py-2 pr-8 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent cursor-pointer transition-colors"
+                    >
+                      {Object.entries(STAGE_LABELS).map(([v, l]) => (
+                        <option key={v} value={v}>{l}</option>
+                      ))}
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-2.5 flex items-center">
+                      <svg className="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-2 pt-1">
