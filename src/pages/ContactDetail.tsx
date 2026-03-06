@@ -224,6 +224,21 @@ export default function ContactDetail() {
     loadAll(id)
   }, [id])
 
+  const timelineEntries = useMemo<TimelineEntry[]>(() => {
+    const entries: TimelineEntry[] = [
+      ...emails.map(e => ({ kind: 'email'    as const, date: e.received_at ?? e.created_at, email:    e })),
+      ...activityLogs.map(a => ({ kind: 'activity' as const, date: a.created_at,              activity: a })),
+      ...deals.map(d => ({ kind: 'deal'     as const, date: d.created_at,              deal:     d })),
+      ...tasks.map(t => ({ kind: 'task'     as const, date: t.created_at,              task:     t })),
+    ]
+    return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  }, [emails, activityLogs, deals, tasks])
+
+  const filteredEntries = useMemo(() => {
+    if (timelineFilter === 'all') return timelineEntries
+    return timelineEntries.filter(e => e.kind === timelineFilter)
+  }, [timelineEntries, timelineFilter])
+
   const loadAll = async (contactId: string) => {
     setLoading(true)
 
@@ -283,22 +298,6 @@ export default function ContactDetail() {
     setShowAddNote(false)
     setToast({ message: 'Activity logged.', type: 'success' })
   }
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const timelineEntries = useMemo<TimelineEntry[]>(() => {
-    const entries: TimelineEntry[] = [
-      ...emails.map(e => ({ kind: 'email'    as const, date: e.received_at ?? e.created_at, email:    e })),
-      ...activityLogs.map(a => ({ kind: 'activity' as const, date: a.created_at,              activity: a })),
-      ...deals.map(d => ({ kind: 'deal'     as const, date: d.created_at,              deal:     d })),
-      ...tasks.map(t => ({ kind: 'task'     as const, date: t.created_at,              task:     t })),
-    ]
-    return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-  }, [emails, activityLogs, deals, tasks])
-
-  const filteredEntries = useMemo(() => {
-    if (timelineFilter === 'all') return timelineEntries
-    return timelineEntries.filter(e => e.kind === timelineFilter)
-  }, [timelineEntries, timelineFilter])
 
   const openQuickDeal = (name?: string, value?: number, stage?: Deal['stage']) => {
     setQdName(name ?? `${contact?.company ?? contact?.name ?? ''} - Deal`)
