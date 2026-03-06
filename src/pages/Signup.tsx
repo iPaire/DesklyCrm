@@ -41,8 +41,12 @@ export default function Signup() {
     setError('')
     setIsLoading(true)
     const { error: authError } = await supabase.auth.signUp({ email, password })
-    if (authError) setError(authError.message)
-    else setSuccess(true)
+    if (authError) {
+      setError(authError.message)
+    } else {
+      localStorage.setItem('deskly-new-user', '1')
+      setSuccess(true)
+    }
     setIsLoading(false)
   }
 

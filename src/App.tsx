@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import { useAuthStore } from './store/authStore'
 import { useDarkModeStore } from './store/darkModeStore'
@@ -15,6 +15,9 @@ import ContactDetail from './pages/ContactDetail'
 import Deals from './pages/Deals'
 import Tasks from './pages/Tasks'
 import Settings from './pages/Settings'
+import GmailCallback from './pages/GmailCallback'
+import Onboarding from './pages/Onboarding'
+import NotFound from './pages/NotFound'
 
 export default function App() {
   const setUser = useAuthStore((s) => s.setUser)
@@ -57,6 +60,10 @@ export default function App() {
         <Route path="/reset-password" element={<ResetPassword />} />
 
         <Route element={<ProtectedRoute />}>
+          {/* Full-screen pages - outside Layout */}
+          <Route path="/settings/gmail/callback" element={<GmailCallback />} />
+          <Route path="/onboarding" element={<Onboarding />} />
+
           <Route element={<Layout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/contacts" element={<Contacts />} />
@@ -67,7 +74,7 @@ export default function App() {
           </Route>
         </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>
   )

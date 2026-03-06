@@ -19,9 +19,11 @@ interface Props {
   deal?: Deal | null
   contacts: Contact[]
   defaultStage?: Deal['stage']
+  defaultContactId?: string
+  defaultName?: string
 }
 
-export default function DealModal({ isOpen, onClose, onSaved, deal, contacts, defaultStage = 'lead' }: Props) {
+export default function DealModal({ isOpen, onClose, onSaved, deal, contacts, defaultStage = 'lead', defaultContactId = '', defaultName = '' }: Props) {
   const user = useAuthStore(s => s.user)
   const [name, setName]           = useState('')
   const [value, setValue]         = useState('')
@@ -38,13 +40,13 @@ export default function DealModal({ isOpen, onClose, onSaved, deal, contacts, de
       setStage(deal.stage)
       setContactId(deal.contact_id ?? '')
     } else {
-      setName('')
+      setName(defaultName)
       setValue('')
       setStage(defaultStage)
-      setContactId('')
+      setContactId(defaultContactId)
     }
     setError('')
-  }, [isOpen, deal, defaultStage])
+  }, [isOpen, deal, defaultStage, defaultContactId, defaultName])
 
   useEffect(() => {
     if (!isOpen) return

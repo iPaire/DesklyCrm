@@ -4,10 +4,9 @@ interface ToastProps {
   message: string
   type: 'success' | 'error'
   onDismiss: () => void
-  action?: { label: string; onClick: () => void }
 }
 
-export function Toast({ message, type, onDismiss, action }: ToastProps) {
+export function Toast({ message, type, onDismiss }: ToastProps) {
   useEffect(() => {
     const t = setTimeout(onDismiss, 3500)
     return () => clearTimeout(t)
@@ -33,14 +32,6 @@ export function Toast({ message, type, onDismiss, action }: ToastProps) {
         )}
       </div>
       <p className="text-sm text-gray-700 dark:text-gray-300 flex-1">{message}</p>
-      {action && (
-        <button
-          onClick={() => { action.onClick(); onDismiss() }}
-          className="text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline shrink-0"
-        >
-          {action.label}
-        </button>
-      )}
       <button
         onClick={onDismiss}
         className="text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors shrink-0"

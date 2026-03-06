@@ -1,468 +1,515 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { useAuthStore } from '../store/authStore'
-import type { Contact, Deal } from '../types'
+import type { Contact, Deal, Task, EmailLog } from '../types'
 import { ContactModal } from '../components/ContactModal'
+import { EmailLogModal } from '../components/EmailLogModal'
 import { Toast } from '../components/Toast'
+import DealModal from '../components/DealModal'
+import TaskModal from '../components/TaskModal'
 
-type DealStage = Deal['stage']
-type ToastState = { message: string; type: 'success' | 'error'; action?: { label: string; onClick: () => void } } | null
+type Tab = 'emails' | 'deals' | 'tasks'
 
-const STAGES: { value: DealStage; label: string }[] = [
-  { value: 'lead', label: 'Lead' },
-  { value: 'qualified', label: 'Qualified' },
-  { value: 'proposal', label: 'Proposal' },
-  { value: 'negotiation', label: 'Negotiation' },
-  { value: 'closed_won', label: 'Closed Won' },
-  { value: 'closed_lost', label: 'Closed Lost' },
-]
+type ToastState = { message: string; type: 'success' | 'error' } | null
 
-const TEMPLATES = [
-  { label: 'Discovery Call', value: 0, stage: 'lead' as DealStage },
-  { label: 'Proposal', value: 5000, stage: 'proposal' as DealStage },
-  { label: 'Contract', value: 10000, stage: 'negotiation' as DealStage },
-]
+// ── Avatar ────────────────────────────────────────────────────────────────────
 
-const STAGE_BADGE: Record<DealStage, string> = {
-  lead: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-  qualified: 'bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
-  proposal: 'bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
-  negotiation: 'bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
-  closed_won: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-  closed_lost: 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300',
-}
-
-const STAGE_DOT: Record<DealStage, string> = {
-  lead: 'bg-gray-400',
-  qualified: 'bg-blue-500',
-  proposal: 'bg-violet-500',
-  negotiation: 'bg-amber-500',
-  closed_won: 'bg-emerald-500',
-  closed_lost: 'bg-red-500',
-}
-
-function formatCurrency(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}k`
-  return `$${n.toLocaleString()}`
-}
-
-function Avatar({ name }: { name: string }) {
-  const initials = name
-    .split(' ')
-    .map((w) => w[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase()
+function Avatar({ name, size = 'lg' }: { name: string; size?: 'sm' | 'lg' }) {
+  const initials = name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+  const cls = size === 'lg'
+    ? 'w-14 h-14 text-lg font-bold'
+    : 'w-8 h-8 text-xs font-semibold'
   return (
-    <div className="w-14 h-14 rounded-full bg-primary-100 dark:bg-primary-950 flex items-center justify-center shrink-0">
-      <span className="text-primary-700 dark:text-primary-300 text-lg font-semibold">{initials}</span>
+    <div className={`${cls} rounded-full bg-primary-100 dark:bg-primary-950 flex items-center justify-center shrink-0`}>
+      <span className="text-primary-700 dark:text-primary-300">{initials}</span>
     </div>
   )
 }
 
-const inputClass =
-  'w-full px-3 py-2.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-colors'
+// ── Relative time ─────────────────────────────────────────────────────────────
+
+function relativeTime(iso: string): string {
+  const diff  = Date.now() - new Date(iso).getTime()
+  const mins  = Math.floor(diff / 60_000)
+  const hours = Math.floor(diff / 3_600_000)
+  const days  = Math.floor(diff / 86_400_000)
+  if (mins  < 2)  return 'Just now'
+  if (mins  < 60) return `${mins}m ago`
+  if (hours < 24) return `${hours}h ago`
+  if (days  < 30) return `${days}d ago`
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+// ── Email card ────────────────────────────────────────────────────────────────
+
+function EmailCard({
+  email,
+  contact,
+  onView,
+  onCreateDeal,
+  onAddTask,
+}: {
+  email:        EmailLog
+  contact:      Contact
+  onView:       () => void
+  onCreateDeal: () => void
+  onAddTask:    () => void
+}) {
+  const isSent = email.direction === 'sent'
+
+  return (
+    <div className="flex gap-3 group">
+      {/* Timeline dot */}
+      <div className="flex flex-col items-center shrink-0 pt-0.5">
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+          isSent
+            ? 'bg-primary-100 dark:bg-primary-950'
+            : 'bg-emerald-100 dark:bg-emerald-950'
+        }`}>
+          <svg className={`w-4 h-4 ${isSent ? 'text-primary-600 dark:text-primary-400' : 'text-emerald-600 dark:text-emerald-400'}`}
+            fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            {isSent ? (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            ) : (
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75}
+                d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+            )}
+          </svg>
+        </div>
+        <div className="w-px flex-1 mt-2 bg-gray-100 dark:bg-gray-800" />
+      </div>
+
+      {/* Card */}
+      <div className="flex-1 pb-5 min-w-0">
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover:border-gray-300 dark:hover:border-gray-700 transition-colors">
+          {/* Header row */}
+          <div className="flex items-start justify-between gap-2 mb-1.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${
+                isSent
+                  ? 'text-primary-700 dark:text-primary-300 bg-primary-100 dark:bg-primary-950'
+                  : 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950'
+              }`}>
+                {isSent ? 'Sent' : 'Received'}
+              </span>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                {email.subject ?? '(no subject)'}
+              </p>
+            </div>
+            {email.received_at && (
+              <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">
+                {relativeTime(email.received_at)}
+              </span>
+            )}
+          </div>
+
+          {/* From/To line */}
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-2 truncate">
+            {isSent
+              ? `To: ${email.to_email ?? contact.email ?? ''}`
+              : `From: ${email.from_email ?? ''}`}
+          </p>
+
+          {/* Preview */}
+          {email.body_preview && (
+            <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-3">
+              "{email.body_preview}"
+            </p>
+          )}
+
+          {/* Actions */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={onView}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+              </svg>
+              View Full Email
+            </button>
+            <button
+              onClick={onCreateDeal}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-950/50 hover:bg-primary-100 dark:hover:bg-primary-950 rounded-lg transition-colors"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Create Deal
+            </button>
+            <button
+              onClick={onAddTask}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded-lg transition-colors"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+              </svg>
+              Add Task
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Stage badge ───────────────────────────────────────────────────────────────
+
+const STAGE_COLORS: Record<string, string> = {
+  lead:        'text-gray-600 bg-gray-100 dark:text-gray-300 dark:bg-gray-800',
+  qualified:   'text-blue-700 bg-blue-100 dark:text-blue-300 dark:bg-blue-950',
+  proposal:    'text-violet-700 bg-violet-100 dark:text-violet-300 dark:bg-violet-950',
+  negotiation: 'text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-950',
+  closed_won:  'text-emerald-700 bg-emerald-100 dark:text-emerald-300 dark:bg-emerald-950',
+  closed_lost: 'text-red-700 bg-red-100 dark:text-red-300 dark:bg-red-950',
+}
+
+const STAGE_LABELS: Record<string, string> = {
+  lead: 'Lead', qualified: 'Qualified', proposal: 'Proposal',
+  negotiation: 'Negotiation', closed_won: 'Closed Won', closed_lost: 'Closed Lost',
+}
+
+// ── Main ContactDetail page ───────────────────────────────────────────────────
 
 export default function ContactDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const user = useAuthStore((s) => s.user)
 
-  const [contact, setContact] = useState<Contact | null>(null)
-  const [deals, setDeals] = useState<Deal[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [notFound, setNotFound] = useState(false)
+  const [contact,   setContact]   = useState<Contact | null>(null)
+  const [emails,    setEmails]    = useState<EmailLog[]>([])
+  const [deals,     setDeals]     = useState<Deal[]>([])
+  const [tasks,     setTasks]     = useState<Task[]>([])
+  const [loading,   setLoading]   = useState(true)
+  const [activeTab, setActiveTab] = useState<Tab>('emails')
+  const [toast,     setToast]     = useState<ToastState>(null)
 
-  // Quick create form
-  const [showForm, setShowForm] = useState(false)
-  const [dealName, setDealName] = useState('')
-  const [dealValue, setDealValue] = useState('')
-  const [dealStage, setDealStage] = useState<DealStage>('lead')
-  const [isCreating, setIsCreating] = useState(false)
-  const [createError, setCreateError] = useState('')
-
-  // Edit contact modal
-  const [editOpen, setEditOpen] = useState(false)
-
-  // Toast
-  const [toast, setToast] = useState<ToastState>(null)
+  // Modals
+  const [editOpen,       setEditOpen]       = useState(false)
+  const [viewEmail,      setViewEmail]      = useState<EmailLog | null>(null)
+  const [quickDealEmail, setQuickDealEmail] = useState<EmailLog | null>(null)
+  const [quickTaskEmail, setQuickTaskEmail] = useState<EmailLog | null>(null)
+  const [allContacts,    setAllContacts]    = useState<Contact[]>([])
 
   useEffect(() => {
     if (!id) return
-    fetchData()
+    loadAll(id)
   }, [id])
 
-  const fetchData = async () => {
-    setIsLoading(true)
-    const [contactRes, dealsRes] = await Promise.all([
-      supabase.from('contacts').select('*').eq('id', id).single(),
-      supabase.from('deals').select('*').eq('contact_id', id).order('created_at', { ascending: false }),
+  const loadAll = async (contactId: string) => {
+    setLoading(true)
+
+    const [contactRes, emailsRes, dealsRes, tasksRes, allContactsRes] = await Promise.all([
+      supabase.from('contacts').select('*').eq('id', contactId).single(),
+      supabase.from('email_logs').select('*').eq('contact_id', contactId).order('received_at', { ascending: false }),
+      supabase.from('deals').select('*').eq('contact_id', contactId).order('created_at', { ascending: false }),
+      supabase.from('tasks').select('*').eq('contact_id', contactId).order('created_at', { ascending: false }),
+      supabase.from('contacts').select('*').order('name'),
     ])
 
     if (contactRes.error || !contactRes.data) {
-      setNotFound(true)
-    } else {
-      const c = contactRes.data as Contact
-      setContact(c)
-      setDealName(`${c.company || c.name} - Deal`)
-    }
-
-    if (!dealsRes.error && dealsRes.data) {
-      setDeals(dealsRes.data as Deal[])
-    }
-
-    setIsLoading(false)
-  }
-
-  const defaultDealName = (c: Contact) => `${c.company || c.name} - Deal`
-
-  const openForm = () => {
-    if (contact) setDealName(defaultDealName(contact))
-    setDealValue('')
-    setDealStage('lead')
-    setCreateError('')
-    setShowForm(true)
-  }
-
-  const applyTemplate = (tpl: typeof TEMPLATES[number]) => {
-    if (contact) setDealName(`${contact.company || contact.name} - ${tpl.label}`)
-    setDealValue(String(tpl.value))
-    setDealStage(tpl.stage)
-    setCreateError('')
-    setShowForm(true)
-  }
-
-  const closeForm = () => {
-    setShowForm(false)
-    setCreateError('')
-  }
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!dealName.trim()) {
-      setCreateError('Deal name is required.')
-      return
-    }
-    if (!user || !contact) return
-
-    setCreateError('')
-    setIsCreating(true)
-
-    const { data, error } = await supabase
-      .from('deals')
-      .insert({
-        user_id: user.id,
-        contact_id: contact.id,
-        name: dealName.trim(),
-        value: parseFloat(dealValue) || 0,
-        stage: dealStage,
-      })
-      .select()
-      .single()
-
-    setIsCreating(false)
-
-    if (error) {
-      setCreateError(error.message)
+      navigate('/contacts')
       return
     }
 
-    setDeals((prev) => [data as Deal, ...prev])
-    closeForm()
-    setDealName(defaultDealName(contact))
-    setDealValue('')
-    setDealStage('lead')
-    setToast({
-      message: 'Deal created!',
-      type: 'success',
-      action: { label: 'View in pipeline', onClick: () => navigate('/deals') },
-    })
+    setContact(contactRes.data as Contact)
+    setEmails((emailsRes.data ?? []) as EmailLog[])
+    setDeals((dealsRes.data ?? []) as Deal[])
+    setTasks((tasksRes.data ?? []) as Task[])
+    setAllContacts((allContactsRes.data ?? []) as Contact[])
+    setLoading(false)
   }
 
-  const handleContactSaved = (_msg: string, saved: Contact) => {
-    setContact(saved)
-    setEditOpen(false)
-    setToast({ message: 'Contact updated.', type: 'success' })
-  }
-
-  if (isLoading) {
+  if (loading) {
     return (
-      <div className="p-8 flex justify-center">
-        <div className="w-7 h-7 border-[3px] border-primary-600 border-t-transparent rounded-full animate-spin" />
+      <div className="p-6 lg:p-8 max-w-3xl mx-auto flex items-center justify-center py-24">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-7 h-7 border-[3px] border-primary-600 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-gray-400 dark:text-gray-500">Loading contact...</p>
+        </div>
       </div>
     )
   }
 
-  if (notFound || !contact) {
-    return (
-      <div className="p-8 text-center">
-        <p className="text-gray-500 dark:text-gray-400 mb-4">Contact not found.</p>
-        <Link to="/contacts" className="text-primary-600 dark:text-primary-400 text-sm hover:underline">
-          ← Back to Contacts
-        </Link>
-      </div>
-    )
-  }
+  if (!contact) return null
+
+  const twoFromNow = new Date()
+  twoFromNow.setDate(twoFromNow.getDate() + 2)
+  const taskDueDate = twoFromNow.toISOString().split('T')[0]
 
   return (
     <div className="p-6 lg:p-8 max-w-3xl mx-auto">
 
-      {/* Back */}
-      <Link
-        to="/contacts"
-        className="inline-flex items-center gap-1.5 text-sm text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors mb-6"
+      {/* Back button */}
+      <button
+        onClick={() => navigate('/contacts')}
+        className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-5 transition-colors"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
-        Contacts
-      </Link>
+        Back to Contacts
+      </button>
 
-      {/* Contact header */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-6 mb-5">
+      {/* Contact header card */}
+      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 mb-5">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Avatar name={contact.name} />
+            <Avatar name={contact.name} size="lg" />
             <div>
               <h1 className="text-xl font-bold text-gray-900 dark:text-white">{contact.name}</h1>
               {contact.company && (
-                <p className="text-sm text-gray-500 dark:text-gray-400">{contact.company}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{contact.company}</p>
               )}
+              <div className="flex flex-wrap gap-3 mt-2">
+                {contact.email && (
+                  <a href={`mailto:${contact.email}`} className="flex items-center gap-1.5 text-xs text-primary-600 dark:text-primary-400 hover:underline">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    {contact.email}
+                  </a>
+                )}
+                {contact.phone && (
+                  <a href={`tel:${contact.phone}`} className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:underline">
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                    {contact.phone}
+                  </a>
+                )}
+              </div>
             </div>
           </div>
           <button
             onClick={() => setEditOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shrink-0"
+            className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-semibold rounded-xl transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a4 4 0 01-1.414.914l-3.414 1.138 1.138-3.414A4 4 0 019 13z" />
             </svg>
             Edit
           </button>
         </div>
 
-        {(contact.email || contact.phone || contact.notes) && (
-          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 flex flex-col gap-2">
-            {contact.email && (
-              <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-gray-400 dark:text-gray-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-                <a href={`mailto:${contact.email}`} className="text-sm text-gray-500 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
-                  {contact.email}
-                </a>
-              </div>
-            )}
-            {contact.phone && (
-              <div className="flex items-center gap-2">
-                <svg className="w-4 h-4 text-gray-400 dark:text-gray-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                </svg>
-                <a href={`tel:${contact.phone}`} className="text-sm text-gray-500 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
-                  {contact.phone}
-                </a>
-              </div>
-            )}
-            {contact.notes && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed mt-1">{contact.notes}</p>
-            )}
-          </div>
+        {contact.notes && (
+          <p className="mt-4 text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3">
+            {contact.notes}
+          </p>
         )}
       </div>
 
-      {/* Quick Create Deal */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 mb-5 overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Quick Create Deal</h2>
-          {showForm ? (
-            <button
-              onClick={closeForm}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-              aria-label="Close form"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          ) : (
-            <button
-              onClick={openForm}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white text-sm font-medium rounded-lg hover:bg-primary-700 transition-colors"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-              New Deal
-            </button>
-          )}
-        </div>
-
-        {/* Templates row - always visible */}
-        <div className="px-6 pb-4 flex flex-wrap items-center gap-2">
-          <span className="text-xs text-gray-400 dark:text-gray-500 mr-0.5">Templates:</span>
-          {TEMPLATES.map((tpl) => (
-            <button
-              key={tpl.label}
-              onClick={() => applyTemplate(tpl)}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-primary-400 hover:text-primary-600 dark:hover:border-primary-600 dark:hover:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-950/50 transition-all"
-            >
-              {tpl.label}
-              <span className="text-gray-300 dark:text-gray-600 ml-0.5">
-                {tpl.value === 0 ? '· $0' : `· $${tpl.value >= 1000 ? `${tpl.value / 1000}k` : tpl.value}`}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {/* Inline form */}
-        {showForm && (
-          <div className="px-6 pb-6 pt-2 border-t border-gray-100 dark:border-gray-800">
-            <form onSubmit={handleCreate} className="space-y-4">
-              {createError && (
-                <div className="flex items-center gap-2 px-3 py-2.5 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-lg">
-                  <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p className="text-sm text-red-600 dark:text-red-400">{createError}</p>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
-                  Deal Name
-                </label>
-                <input
-                  type="text"
-                  value={dealName}
-                  onChange={(e) => setDealName(e.target.value)}
-                  placeholder="e.g. Acme Corp - Q2 Deal"
-                  className={inputClass}
-                  autoFocus
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
-                    Value
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 dark:text-gray-500 pointer-events-none">$</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="any"
-                      value={dealValue}
-                      onChange={(e) => setDealValue(e.target.value)}
-                      placeholder="0"
-                      className={`${inputClass} pl-7`}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
-                    Stage
-                  </label>
-                  <select
-                    value={dealStage}
-                    onChange={(e) => setDealStage(e.target.value as DealStage)}
-                    className={inputClass}
-                  >
-                    {STAGES.map((s) => (
-                      <option key={s.value} value={s.value}>{s.label}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3 pt-1">
-                <button
-                  type="submit"
-                  disabled={isCreating}
-                  className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white text-sm font-semibold rounded-lg hover:bg-primary-700 disabled:opacity-60 transition-colors"
-                >
-                  {isCreating ? (
-                    <>
-                      <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    'Create Deal'
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={closeForm}
-                  className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-      </div>
-
-      {/* Related Deals */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-gray-800 flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Related Deals</h2>
-          {deals.length > 0 && (
-            <span className="px-2 py-0.5 text-xs font-semibold bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-full">
-              {deals.length}
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        {[
+          { label: 'Emails', count: emails.length,   tab: 'emails' as Tab },
+          { label: 'Deals',  count: deals.length,    tab: 'deals'  as Tab },
+          { label: 'Tasks',  count: tasks.length,    tab: 'tasks'  as Tab },
+        ].map(s => (
+          <button
+            key={s.tab}
+            onClick={() => setActiveTab(s.tab)}
+            className={`flex flex-col items-center py-3 rounded-xl border transition-colors ${
+              activeTab === s.tab
+                ? 'border-primary-300 dark:border-primary-700 bg-primary-50 dark:bg-primary-950/30'
+                : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-700'
+            }`}
+          >
+            <span className={`text-xl font-bold ${activeTab === s.tab ? 'text-primary-600 dark:text-primary-400' : 'text-gray-900 dark:text-white'}`}>
+              {s.count}
             </span>
-          )}
-        </div>
-
-        {deals.length === 0 ? (
-          <div className="py-10 flex flex-col items-center text-center px-4">
-            <svg className="w-6 h-6 text-gray-300 dark:text-gray-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            <p className="text-sm text-gray-400 dark:text-gray-500">No deals yet. Create one above.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-50 dark:divide-gray-800">
-            {deals.map((deal) => (
-              <div key={deal.id} className="px-6 py-4 flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{deal.name}</p>
-                  <div className="mt-1">
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${STAGE_BADGE[deal.stage]}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${STAGE_DOT[deal.stage]}`} />
-                      {STAGES.find((s) => s.value === deal.stage)?.label}
-                    </span>
-                  </div>
-                </div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white shrink-0">
-                  {formatCurrency(deal.value)}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
+            <span className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{s.label}</span>
+          </button>
+        ))}
       </div>
 
-      {/* Edit Contact Modal */}
+      {/* Tab content */}
+
+      {/* ── Emails tab ── */}
+      {activeTab === 'emails' && (
+        <div>
+          {emails.length === 0 ? (
+            <div className="py-16 flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-3">
+                <svg className="w-6 h-6 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">No emails synced yet</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                Connect Gmail in Settings and run a sync to see emails with this contact.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-0">
+              {emails.map(email => (
+                <EmailCard
+                  key={email.id}
+                  email={email}
+                  contact={contact}
+                  onView={() => setViewEmail(email)}
+                  onCreateDeal={() => setQuickDealEmail(email)}
+                  onAddTask={() => setQuickTaskEmail(email)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Deals tab ── */}
+      {activeTab === 'deals' && (
+        <div className="space-y-3">
+          {deals.length === 0 ? (
+            <div className="py-16 flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-3">
+                <svg className="w-6 h-6 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                </svg>
+              </div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">No deals yet</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Deals linked to this contact will appear here.</p>
+            </div>
+          ) : (
+            deals.map(deal => (
+              <div key={deal.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">{deal.name}</p>
+                  <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${STAGE_COLORS[deal.stage] ?? ''}`}>
+                    {STAGE_LABELS[deal.stage] ?? deal.stage}
+                  </span>
+                </div>
+                {deal.value > 0 && (
+                  <p className="text-sm font-bold text-primary-600 dark:text-primary-400 mt-1">
+                    ${deal.value.toLocaleString()}
+                  </p>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── Tasks tab ── */}
+      {activeTab === 'tasks' && (
+        <div className="space-y-3">
+          {tasks.length === 0 ? (
+            <div className="py-16 flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-3">
+                <svg className="w-6 h-6 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">No tasks yet</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Tasks linked to this contact will appear here.</p>
+            </div>
+          ) : (
+            tasks.map(task => (
+              <div key={task.id} className="flex items-center gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+                <div className={`w-4 h-4 rounded-full border-2 shrink-0 ${
+                  task.completed
+                    ? 'bg-emerald-500 border-emerald-500'
+                    : 'border-gray-300 dark:border-gray-600'
+                }`}>
+                  {task.completed && (
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ margin: '1px' }}>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-medium truncate ${task.completed ? 'line-through text-gray-400 dark:text-gray-600' : 'text-gray-900 dark:text-white'}`}>
+                    {task.title}
+                  </p>
+                  {task.due_date && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                      Due {new Date(task.due_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── Modals ── */}
+
+      {/* Edit contact */}
       {editOpen && (
         <ContactModal
           contact={contact}
           onClose={() => setEditOpen(false)}
-          onSaved={handleContactSaved}
+          onSaved={(_, saved) => {
+            setContact(saved as Contact)
+            setEditOpen(false)
+            setToast({ message: 'Contact updated.', type: 'success' })
+          }}
+        />
+      )}
+
+      {/* Full email view */}
+      {viewEmail && contact && (
+        <EmailLogModal
+          email={viewEmail}
+          contact={contact}
+          onClose={() => setViewEmail(null)}
+          onDealCreated={deal => {
+            setDeals(prev => [deal, ...prev])
+            setToast({ message: `Deal "${deal.name}" created!`, type: 'success' })
+          }}
+          onTaskCreated={task => {
+            setTasks(prev => [task, ...prev])
+            setToast({ message: 'Task created!', type: 'success' })
+          }}
+        />
+      )}
+
+      {/* Quick Create Deal from email card */}
+      {quickDealEmail && contact && (
+        <DealModal
+          isOpen={!!quickDealEmail}
+          onClose={() => setQuickDealEmail(null)}
+          onSaved={(deal, isNew) => {
+            setQuickDealEmail(null)
+            if (isNew) {
+              setDeals(prev => [deal, ...prev])
+              setToast({ message: `Deal "${deal.name}" created!`, type: 'success' })
+            }
+          }}
+          deal={null}
+          contacts={allContacts}
+          defaultStage="lead"
+          defaultContactId={contact.id}
+          defaultName={quickDealEmail.subject ?? ''}
+        />
+      )}
+
+      {/* Quick Add Task from email card */}
+      {quickTaskEmail && contact && (
+        <TaskModal
+          isOpen={!!quickTaskEmail}
+          onClose={() => setQuickTaskEmail(null)}
+          onSaved={(task, isNew) => {
+            setQuickTaskEmail(null)
+            if (isNew) {
+              setTasks(prev => [task, ...prev])
+              setToast({ message: 'Task created!', type: 'success' })
+            }
+          }}
+          task={null}
+          contacts={allContacts}
+          deals={deals}
+          defaultContactId={contact.id}
+          defaultTitle={`Follow up: ${quickTaskEmail.subject ?? 'Email'}`}
+          defaultDueDate={taskDueDate}
         />
       )}
 
       {/* Toast */}
       {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          action={toast.action}
-          onDismiss={() => setToast(null)}
-        />
+        <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />
       )}
     </div>
   )

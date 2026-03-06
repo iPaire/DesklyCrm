@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useDarkModeStore } from '../store/darkModeStore'
+import { NotificationBell } from './NotificationBell'
 
 const navItems = [
   {
@@ -85,12 +86,15 @@ export default function Layout() {
   const sidebarContent = (
     <>
       {/* Logo */}
-      <div className="flex items-center gap-2.5 px-5 py-[18px] border-b border-gray-100 dark:border-gray-800">
+      <button
+        onClick={() => navigate('/')}
+        className="flex items-center gap-2.5 px-5 py-[18px] border-b border-gray-100 dark:border-gray-800 hover:opacity-80 transition-opacity text-left w-full"
+      >
         <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center shrink-0">
           <span className="text-white font-bold text-xs">D</span>
         </div>
         <span className="text-base font-semibold text-gray-900 dark:text-white tracking-tight">Deskly</span>
-      </div>
+      </button>
 
       {/* Nav */}
       <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
@@ -100,7 +104,7 @@ export default function Layout() {
             to={item.to}
             onClick={() => setSidebarOpen(false)}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-colors ${
+              `flex items-center gap-3 px-3 py-3 rounded-lg text-[15px] font-medium transition-colors ${
                 isActive
                   ? 'bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300'
                   : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
@@ -115,6 +119,9 @@ export default function Layout() {
 
       {/* Bottom section */}
       <div className="px-3 pb-4 space-y-1 border-t border-gray-100 dark:border-gray-800 pt-3">
+        {/* Notifications */}
+        <NotificationBell />
+
         {/* Dark mode toggle */}
         <button
           onClick={toggleDark}
@@ -178,7 +185,7 @@ export default function Layout() {
       </aside>
 
       {/* Right side */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
 
         {/* Mobile top bar */}
         <header className="lg:hidden flex items-center gap-3 px-4 h-14 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 shrink-0">
@@ -191,16 +198,16 @@ export default function Layout() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <div className="flex items-center gap-2">
+          <button onClick={() => navigate('/')} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <div className="w-6 h-6 bg-primary-600 rounded-md flex items-center justify-center">
               <span className="text-white font-bold text-[10px]">D</span>
             </div>
             <span className="text-sm font-semibold text-gray-900 dark:text-white">Deskly</span>
-          </div>
+          </button>
         </header>
 
         {/* Page content */}
-        <main className="flex-1 min-h-0 overflow-auto bg-gray-50 dark:bg-gray-950">
+        <main className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-950">
           <Outlet />
         </main>
       </div>

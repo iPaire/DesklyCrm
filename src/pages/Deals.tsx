@@ -25,6 +25,8 @@ import type { Deal, Contact } from '../types'
 import DealModal from '../components/DealModal'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Toast } from '../components/Toast'
+import { useAuthStore } from '../store/authStore'
+import { getUserAutomations, isEnabled, runDealProposalTask } from '../lib/automations'
 
 // ─── Stage config ─────────────────────────────────────────────────────────────
 
@@ -340,6 +342,7 @@ function KanbanColumn({ stage, dealIds, allDeals, contacts, onEdit, onDelete, on
 // ─── Main Deals page ──────────────────────────────────────────────────────────
 
 export default function Deals() {
+  const user     = useAuthStore(s => s.user)
   const [deals,    setDeals]    = useState<Deal[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
   const [items,      setItems]      = useState<Record<StageId, string[]>>(buildItems([]))
@@ -376,7 +379,7 @@ export default function Deals() {
   useEffect(() => {
     async function load() {
       const [{ data: dealData, error: dealErr }, { data: contactData, error: contactErr }] = await Promise.all([
-        supabase.from('deals').select('*').order('created_at', { ascending: true }),
+        supabase.from('deals').select('*').eq('archived', false).order('created_at', { ascending: true }),
         supabase.from('contacts').select('*').order('name', { ascending: true }),
       ])
       if (dealErr || contactErr) {
@@ -469,8 +472,17 @@ export default function Deals() {
         .eq('id', activeId)
 
       if (!error) {
-        setDeals(prev => prev.map(d => d.id === activeId ? { ...d, stage: newStage } : d))
+        const updatedDeal = { ...deal, stage: newStage }
+        setDeals(prev => prev.map(d => d.id === activeId ? updatedDeal : d))
         setToast({ message: `Moved to ${STAGES.find(s => s.id === newStage)?.label ?? newStage}`, type: 'success' })
+
+        // Automation: deal_proposal_task
+        if (newStage === 'proposal' && user) {
+          const automations = await getUserAutomations(user.id)
+          if (isEnabled(automations, 'deal_proposal_task')) {
+            await runDealProposalTask(updatedDeal, contacts, user.id)
+          }
+        }
       } else {
         setItems(buildItems(deals))
         setToast({ message: error.message, type: 'error' })
@@ -492,7 +504,7 @@ export default function Deals() {
     setModalOpen(true)
   }
 
-  const handleSaved = (saved: Deal, isNew: boolean) => {
+  const handleSaved = async (saved: Deal, isNew: boolean) => {
     if (isNew) {
       setDeals(prev => {
         const next = [...prev, saved]
@@ -501,12 +513,21 @@ export default function Deals() {
       })
       setToast({ message: 'Deal created!', type: 'success' })
     } else {
-      setDeals(prev => {
-        const next = prev.map(d => d.id === saved.id ? saved : d)
+      const prev = deals.find(d => d.id === saved.id)
+      setDeals(p => {
+        const next = p.map(d => d.id === saved.id ? saved : d)
         setItems(buildItems(next))
         return next
       })
       setToast({ message: 'Deal updated!', type: 'success' })
+
+      // Automation: deal moved to proposal via modal
+      if (saved.stage === 'proposal' && prev?.stage !== 'proposal' && user) {
+        const automations = await getUserAutomations(user.id)
+        if (isEnabled(automations, 'deal_proposal_task')) {
+          await runDealProposalTask(saved, contacts, user.id)
+        }
+      }
     }
   }
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import {
   AreaChart, Area,
   BarChart, Bar, Cell,
@@ -7,6 +8,8 @@ import {
 import { supabase } from '../lib/supabase'
 import type { Contact, Deal, Task } from '../types'
 import { useDarkModeStore } from '../store/darkModeStore'
+import { useAuthStore } from '../store/authStore'
+import { runDailyChecks } from '../lib/automations'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -221,6 +224,7 @@ function StatCard({ label, value, sub, subPositive, iconBg, icon, active, onClic
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function Dashboard() {
+  const user = useAuthStore(s => s.user)
   const [contacts, setContacts] = useState<Contact[]>([])
   const [deals,    setDeals]    = useState<Deal[]>([])
   const [tasks,    setTasks]    = useState<Pick<Task, 'id' | 'due_date' | 'completed'>[]>([])
@@ -299,9 +303,12 @@ export default function Dashboard() {
       setDeals((d ?? []) as Deal[])
       setTasks((t ?? []) as Pick<Task, 'id' | 'due_date' | 'completed'>[])
       setLoading(false)
+
+      // Run daily automation checks (stale deals, overdue tasks, auto-archive)
+      if (user) runDailyChecks(user.id)
     }
     load()
-  }, [])
+  }, [user])
 
   if (loading) return <LoadingSkeleton />
 
@@ -437,6 +444,8 @@ export default function Dashboard() {
     )
   }
 
+  const isEmpty = totalContacts === 0 && deals.length === 0 && tasks.length === 0
+
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="p-6 lg:p-8 max-w-6xl mx-auto">
@@ -448,6 +457,68 @@ export default function Dashboard() {
         </h1>
         <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">{TODAY_LABEL}</p>
       </div>
+
+      {/* ── Quickstart guide (shown on empty workspace) ── */}
+      {isEmpty && (
+        <div className="mb-8 bg-gradient-to-br from-primary-50 to-blue-50 dark:from-primary-950/40 dark:to-blue-950/30 border border-primary-200 dark:border-primary-900 rounded-2xl p-6">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center shrink-0">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-white mb-0.5">
+                Get started with Deskly
+              </h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-5">
+                Complete these steps to set up your CRM workspace.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  {
+                    step: '1',
+                    title: 'Add a contact',
+                    desc: 'Import or add your first client or lead.',
+                    href: '/contacts',
+                    color: 'bg-blue-500',
+                  },
+                  {
+                    step: '2',
+                    title: 'Create a deal',
+                    desc: 'Track an opportunity in your pipeline.',
+                    href: '/deals',
+                    color: 'bg-violet-500',
+                  },
+                  {
+                    step: '3',
+                    title: 'Set a task',
+                    desc: 'Schedule your first follow-up or action.',
+                    href: '/tasks',
+                    color: 'bg-amber-500',
+                  },
+                ].map((item) => (
+                  <Link
+                    key={item.step}
+                    to={item.href}
+                    className="flex items-start gap-3 p-3.5 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-primary-300 dark:hover:border-primary-700 hover:shadow-sm transition-all group"
+                  >
+                    <div className={`w-6 h-6 ${item.color} rounded-full flex items-center justify-center shrink-0 mt-0.5`}>
+                      <span className="text-white text-xs font-bold">{item.step}</span>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-gray-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                        {item.title}
+                      </p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{item.desc}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Stat cards (clickable) ── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">

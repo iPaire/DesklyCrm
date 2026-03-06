@@ -10,9 +10,12 @@ interface Props {
   task?: Task | null
   contacts: Contact[]
   deals: Deal[]
+  defaultContactId?: string
+  defaultTitle?: string
+  defaultDueDate?: string
 }
 
-export default function TaskModal({ isOpen, onClose, onSaved, task, contacts, deals }: Props) {
+export default function TaskModal({ isOpen, onClose, onSaved, task, contacts, deals, defaultContactId = '', defaultTitle = '', defaultDueDate = '' }: Props) {
   const user = useAuthStore(s => s.user)
   const [title,     setTitle]     = useState('')
   const [dueDate,   setDueDate]   = useState('')
@@ -31,13 +34,13 @@ export default function TaskModal({ isOpen, onClose, onSaved, task, contacts, de
       setContactId(task.contact_id ?? '')
       setDealId(task.deal_id ?? '')
     } else {
-      setTitle('')
-      setDueDate(todayStr)
-      setContactId('')
+      setTitle(defaultTitle)
+      setDueDate(defaultDueDate || todayStr)
+      setContactId(defaultContactId)
       setDealId('')
     }
     setError('')
-  }, [isOpen, task, todayStr])
+  }, [isOpen, task, todayStr, defaultContactId, defaultTitle, defaultDueDate])
 
   useEffect(() => {
     if (!isOpen) return

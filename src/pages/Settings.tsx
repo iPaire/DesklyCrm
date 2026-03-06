@@ -1,8 +1,10 @@
-import { useState, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useRef, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 import { Toast } from '../components/Toast'
+import { GmailSettingsPanel } from '../components/GmailSettingsPanel'
+import { AutomationsPanel } from '../components/AutomationsPanel'
 
 // ─── CSV parser ────────────────────────────────────────────────────────────────
 
@@ -354,9 +356,18 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
 
 export default function Settings() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const user   = useAuthStore(s => s.user)
   const signOut = useAuthStore(s => s.signOut)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+
+  // Show success toast if redirected back from Gmail OAuth
+  useEffect(() => {
+    if (searchParams.get('gmail') === 'connected') {
+      setToast({ message: 'Gmail connected! Click "Sync Now" to import emails.', type: 'success' })
+      navigate('/settings', { replace: true })
+    }
+  }, [searchParams, navigate])
 
   const initials = user?.email?.[0].toUpperCase() ?? 'U'
 
@@ -522,6 +533,44 @@ export default function Settings() {
           </svg>
           Invite team member
         </button>
+      </SectionCard>
+
+      {/* ── Automations ── */}
+      <SectionCard
+        title="Automations"
+        icon={
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        }
+      >
+        <div className="mb-5">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">Pre-built Automations</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            Toggle automations on or off. Enabled automations run automatically when triggered.
+          </p>
+        </div>
+        <AutomationsPanel onToast={(m, t) => setToast({ message: m, type: t })} />
+      </SectionCard>
+
+      {/* ── Gmail Integration ── */}
+      <SectionCard
+        title="Gmail Integration"
+        icon={
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+        }
+      >
+        <div className="mb-4">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">Sync Gmail Emails</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            Automatically sync emails with your CRM contacts and track communication history.
+          </p>
+        </div>
+        <GmailSettingsPanel onToast={(m, t) => setToast({ message: m, type: t })} />
       </SectionCard>
 
       {/* ── Import Data ── */}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 import type { Contact } from '../types'
+import { getUserAutomations, isEnabled, runContactReachOutTask } from '../lib/automations'
 
 interface FormData {
   name: string
@@ -93,7 +94,16 @@ export function ContactModal({ contact, onClose, onSaved }: ContactModalProps) {
         .single()
 
       if (dbError) { setError(dbError.message); setIsLoading(false); return }
-      onSaved('Contact added successfully.', data as Contact)
+      const newContact = data as Contact
+      onSaved('Contact added successfully.', newContact)
+
+      // Automation: contact_reach_out_task
+      if (user) {
+        const automations = await getUserAutomations(user.id)
+        if (isEnabled(automations, 'contact_reach_out_task')) {
+          await runContactReachOutTask(newContact, user.id)
+        }
+      }
     }
 
     setIsLoading(false)
