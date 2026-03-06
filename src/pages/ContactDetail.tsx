@@ -2,12 +2,20 @@ import { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
-import type { Contact, Deal, Task, EmailLog, ActivityLog } from '../types'
+import type { Contact, Deal, Task, EmailLog, ActivityLog, GmailConnection } from '../types'
 import { ContactModal } from '../components/ContactModal'
 import { EmailLogModal } from '../components/EmailLogModal'
 import { Toast } from '../components/Toast'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import DealModal from '../components/DealModal'
 import TaskModal from '../components/TaskModal'
+import {
+  listMessages,
+  getMessageDetail,
+  refreshAccessToken,
+  extractEmailAddress,
+  stripHtml,
+} from '../lib/gmail'
 
 type Tab = 'timeline' | 'deals' | 'tasks'
 type TimelineFilter = 'all' | 'email' | 'activity' | 'deal' | 'task'
@@ -218,6 +226,11 @@ export default function ContactDetail() {
   const [quickDealEmail, setQuickDealEmail] = useState<EmailLog | null>(null)
   const [quickTaskEmail, setQuickTaskEmail] = useState<EmailLog | null>(null)
   const [allContacts,    setAllContacts]    = useState<Contact[]>([])
+  const [editingTask,    setEditingTask]    = useState<Task | null>(null)
+  const [deletingTask,   setDeletingTask]   = useState<Task | null>(null)
+  const [taskDeleting,   setTaskDeleting]   = useState(false)
+  const [gmailConn,      setGmailConn]      = useState<GmailConnection | null>(null)
+  const [isSyncing,      setIsSyncing]      = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -242,13 +255,14 @@ export default function ContactDetail() {
   const loadAll = async (contactId: string) => {
     setLoading(true)
 
-    const [contactRes, emailsRes, activityRes, dealsRes, tasksRes, allContactsRes] = await Promise.all([
+    const [contactRes, emailsRes, activityRes, dealsRes, tasksRes, allContactsRes, gmailRes] = await Promise.all([
       supabase.from('contacts').select('*').eq('id', contactId).single(),
       supabase.from('email_logs').select('*').eq('contact_id', contactId).order('received_at', { ascending: false }),
       supabase.from('activity_logs').select('*').eq('contact_id', contactId).order('created_at', { ascending: false }),
       supabase.from('deals').select('*').eq('contact_id', contactId).order('created_at', { ascending: false }),
       supabase.from('tasks').select('*').eq('contact_id', contactId).order('created_at', { ascending: false }),
       supabase.from('contacts').select('*').order('name'),
+      supabase.from('gmail_connections').select('*').eq('user_id', user!.id).maybeSingle(),
     ])
 
     if (contactRes.error || !contactRes.data) {
@@ -262,7 +276,101 @@ export default function ContactDetail() {
     setDeals((dealsRes.data ?? []) as Deal[])
     setTasks((tasksRes.data ?? []) as Task[])
     setAllContacts((allContactsRes.data ?? []) as Contact[])
+    setGmailConn((gmailRes.data ?? null) as GmailConnection | null)
     setLoading(false)
+  }
+
+  const handleToggleTask = async (task: Task) => {
+    const newCompleted = !task.completed
+    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: newCompleted } : t))
+    const { error } = await supabase.from('tasks').update({ completed: newCompleted }).eq('id', task.id)
+    if (error) {
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: task.completed } : t))
+      setToast({ message: 'Could not update task.', type: 'error' })
+    }
+  }
+
+  const handleDeleteTask = async () => {
+    if (!deletingTask) return
+    setTaskDeleting(true)
+    const { error } = await supabase.from('tasks').delete().eq('id', deletingTask.id)
+    setTaskDeleting(false)
+    if (error) {
+      setToast({ message: 'Could not delete task.', type: 'error' })
+    } else {
+      setTasks(prev => prev.filter(t => t.id !== deletingTask.id))
+      setToast({ message: 'Task deleted.', type: 'success' })
+    }
+    setDeletingTask(null)
+  }
+
+  const handleGmailSync = async () => {
+    if (!gmailConn || !contact?.email || !user) return
+    setIsSyncing(true)
+
+    try {
+      // Get a valid access token (refresh if needed)
+      let accessToken = gmailConn.access_token ?? ''
+      const now = Date.now()
+      const expiry = gmailConn.token_expiry ? new Date(gmailConn.token_expiry).getTime() : 0
+      if (!accessToken || expiry - now < 5 * 60 * 1000) {
+        if (!gmailConn.refresh_token) throw new Error('No refresh token - please reconnect Gmail.')
+        const tokens = await refreshAccessToken(gmailConn.refresh_token)
+        const newExpiry = new Date(now + tokens.expires_in * 1000).toISOString()
+        const { data } = await supabase
+          .from('gmail_connections')
+          .update({ access_token: tokens.access_token, token_expiry: newExpiry })
+          .eq('user_id', user.id)
+          .select()
+          .single()
+        if (data) setGmailConn(data as GmailConnection)
+        accessToken = tokens.access_token
+      }
+
+      // Search Gmail for messages involving this contact's email
+      const messages = await listMessages(accessToken, `from:${contact.email} OR to:${contact.email}`, 100)
+
+      let saved = 0
+      for (const msg of messages) {
+        try {
+          const email = await getMessageDetail(accessToken, msg.id)
+          const fromAddr = extractEmailAddress(email.from)
+          const gmailAddr = gmailConn.gmail_email.toLowerCase()
+          const direction: 'sent' | 'received' = fromAddr === gmailAddr ? 'sent' : 'received'
+          const bodyText = email.bodyPlain || stripHtml(email.bodyHtml)
+          const { error } = await supabase.from('email_logs').upsert(
+            {
+              user_id:          user.id,
+              contact_id:       contact.id,
+              gmail_message_id: email.messageId,
+              thread_id:        email.threadId,
+              subject:          email.subject,
+              from_email:       email.from,
+              to_email:         email.to,
+              body_preview:     bodyText.trim().slice(0, 200),
+              body_full:        email.bodyHtml || email.bodyPlain,
+              received_at:      email.date ? new Date(email.date).toISOString() : new Date().toISOString(),
+              direction,
+            },
+            { onConflict: 'user_id,gmail_message_id' },
+          )
+          if (!error) saved++
+        } catch { /* skip individual failures */ }
+      }
+
+      // Reload emails from DB
+      const { data: refreshed } = await supabase
+        .from('email_logs')
+        .select('*')
+        .eq('contact_id', contact.id)
+        .order('received_at', { ascending: false })
+      setEmails((refreshed ?? []) as EmailLog[])
+      setToast({ message: `Sync done - ${saved} email${saved !== 1 ? 's' : ''} synced.`, type: 'success' })
+    } catch (err) {
+      setToast({ message: (err as Error).message || 'Gmail sync failed.', type: 'error' })
+    }
+
+    setIsSyncing(false)
   }
 
   if (loading) {
@@ -373,15 +481,34 @@ export default function ContactDetail() {
               </div>
             </div>
           </div>
-          <button
-            onClick={() => setEditOpen(true)}
-            className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-semibold rounded-xl transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a4 4 0 01-1.414.914l-3.414 1.138 1.138-3.414A4 4 0 019 13z" />
-            </svg>
-            Edit
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {gmailConn && contact.email && (
+              <button
+                onClick={handleGmailSync}
+                disabled={isSyncing}
+                title="Sync emails from Gmail"
+                className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400 text-xs font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg
+                  className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`}
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                {isSyncing ? 'Syncing…' : 'Sync Gmail'}
+              </button>
+            )}
+            <button
+              onClick={() => setEditOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-semibold rounded-xl transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a4 4 0 01-1.414.914l-3.414 1.138 1.138-3.414A4 4 0 019 13z" />
+              </svg>
+              Edit
+            </button>
+          </div>
         </div>
 
         {contact.notes && (
@@ -777,18 +904,22 @@ export default function ContactDetail() {
             </div>
           ) : (
             tasks.map(task => (
-              <div key={task.id} className="flex items-center gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-                <div className={`w-4 h-4 rounded-full border-2 shrink-0 ${
-                  task.completed
-                    ? 'bg-emerald-500 border-emerald-500'
-                    : 'border-gray-300 dark:border-gray-600'
-                }`}>
+              <div key={task.id} className="flex items-center gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 group">
+                <button
+                  onClick={() => handleToggleTask(task)}
+                  className={`w-5 h-5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${
+                    task.completed
+                      ? 'bg-emerald-500 border-emerald-500 hover:bg-emerald-600 hover:border-emerald-600'
+                      : 'border-gray-300 dark:border-gray-600 hover:border-emerald-400 dark:hover:border-emerald-500'
+                  }`}
+                  title={task.completed ? 'Mark as incomplete' : 'Mark as complete'}
+                >
                   {task.completed && (
-                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ margin: '1px' }}>
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                     </svg>
                   )}
-                </div>
+                </button>
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm font-medium truncate ${task.completed ? 'line-through text-gray-400 dark:text-gray-600' : 'text-gray-900 dark:text-white'}`}>
                     {task.title}
@@ -798,6 +929,26 @@ export default function ContactDetail() {
                       Due {new Date(task.due_date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                     </p>
                   )}
+                </div>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={() => setEditingTask(task)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                    title="Edit task"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setDeletingTask(task)}
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                    title="Delete task"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
                 </div>
               </div>
             ))
@@ -875,6 +1026,34 @@ export default function ContactDetail() {
           defaultContactId={contact.id}
           defaultTitle={`Follow up: ${quickTaskEmail.subject ?? 'Email'}`}
           defaultDueDate={taskDueDate}
+        />
+      )}
+
+      {/* Edit Task */}
+      {editingTask && (
+        <TaskModal
+          isOpen={!!editingTask}
+          onClose={() => setEditingTask(null)}
+          onSaved={(task) => {
+            setTasks(prev => prev.map(t => t.id === task.id ? task : t))
+            setEditingTask(null)
+            setToast({ message: 'Task updated!', type: 'success' })
+          }}
+          task={editingTask}
+          contacts={allContacts}
+          deals={deals}
+        />
+      )}
+
+      {/* Delete Task confirmation */}
+      {deletingTask && (
+        <ConfirmDialog
+          title="Delete task"
+          message={`Are you sure you want to delete "${deletingTask.title}"?`}
+          confirmLabel="Delete"
+          isLoading={taskDeleting}
+          onConfirm={handleDeleteTask}
+          onCancel={() => setDeletingTask(null)}
         />
       )}
 
