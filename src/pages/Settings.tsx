@@ -9,6 +9,8 @@ import {
   resendInvite,
   cancelInvite,
   startStripeCheckout,
+  syncSubscriptionQuantity,
+  getStripePortalUrl,
   findUserIdByEmail,
   getMemberActivity,
   type TeamActivityLog,
@@ -772,6 +774,7 @@ export default function Settings() {
   const subscribed = useBillingStore(selectIsSubscribed)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [upgradeLoading, setUpgradeLoading] = useState(false)
+  const [portalLoading, setPortalLoading] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteSent, setInviteSent] = useState(false)
@@ -823,6 +826,17 @@ export default function Settings() {
     window.location.href = url
   }
 
+  const handleOpenPortal = async () => {
+    setPortalLoading(true)
+    const { url, error } = await getStripePortalUrl()
+    if (error || !url) {
+      setToast({ message: error ?? 'Could not open billing portal. Try again.', type: 'error' })
+      setPortalLoading(false)
+      return
+    }
+    window.location.href = url
+  }
+
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) return
@@ -865,8 +879,11 @@ export default function Settings() {
     if (error) {
       setToast({ message: error.message, type: 'error' })
     } else {
-      setMembers(members.filter(m => m.id !== memberId))
+      const updated = members.filter(m => m.id !== memberId)
+      setMembers(updated)
       setToast({ message: 'Member removed.', type: 'success' })
+      // Sync Stripe subscription quantity to the new active seat count
+      if (team) syncSubscriptionQuantity(team.id)
     }
     setRemovingId(null)
   }
@@ -1041,39 +1058,82 @@ export default function Settings() {
             </svg>
           }
         >
-          {subscribed ? (
+          {!isOwner ? (
+            /* ── Member view: billing managed by team owner ── */
+            <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800/50 border border-gray-200 dark:border-gray-800 p-6 shadow-sm">
+              <div className="flex items-center gap-4 mb-4">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-md ${subscribed ? 'bg-gradient-to-br from-emerald-500 to-teal-500' : 'bg-gradient-to-br from-primary-500 to-violet-500'}`}>
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M17 20h5v-2a4 4 0 00-5-3.87M9 20H4v-2a4 4 0 015-3.87m6-4a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Current Plan</p>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    {subscribed ? 'Deskly Pro' : 'Free Trial'}
+                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${subscribed ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60' : 'text-primary-700 dark:text-primary-300 bg-primary-100 dark:bg-primary-950/60'}`}>
+                      {subscribed ? 'Active' : `${trialInfo?.daysRemaining ?? '?'} days left`}
+                    </span>
+                  </h3>
+                </div>
+              </div>
+              <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 p-4">
+                <div className="flex items-start gap-3">
+                  <svg className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-blue-900 dark:text-blue-200">Billing is managed by your team owner</p>
+                    <p className="text-sm text-blue-700 dark:text-blue-400 mt-0.5">{team?.owner_email}</p>
+                    {subscribed && team?.current_period_end && (
+                      <p className="text-xs text-blue-600 dark:text-blue-500 mt-2">
+                        Next billing period: {new Date(team.current_period_end).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                        {' '}· ${(team.seats ?? 1) * 10}/month ({team.seats ?? 1} seat{(team.seats ?? 1) !== 1 ? 's' : ''} × $10)
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : subscribed ? (
+            /* ── Owner subscribed view ── */
             <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800/50 border border-gray-200 dark:border-gray-800 p-6 shadow-sm hover:shadow-md transition-all">
               <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 rounded-full blur-3xl -mr-20 -mt-20" />
               <div className="relative">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-white shadow-md">
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                          d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Current Plan</p>
-                      <h3 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        Deskly Pro
-                        <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-3 py-1 rounded-full">
-                          Active
-                        </span>
-                      </h3>
-                    </div>
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-white shadow-md">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Current Plan</p>
+                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      Deskly Pro
+                      <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-3 py-1 rounded-full">
+                        Active
+                      </span>
+                    </h3>
                   </div>
                 </div>
 
-                <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-4xl font-bold text-gray-900 dark:text-white">
-                    ${(team?.seats ?? 1) * 10}
-                  </span>
-                  <span className="text-gray-500 dark:text-gray-400 text-base">/month</span>
-                </div>
-                <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
-                  {team?.seats ?? 1} seat{(team?.seats ?? 1) > 1 ? 's' : ''} · ${10}/user/month
-                </p>
+                {(() => {
+                  const activeSeats = members.filter(m => m.status === 'active').length || (team?.seats ?? 1)
+                  return (
+                    <>
+                      <div className="mt-4 flex items-baseline gap-1">
+                        <span className="text-4xl font-bold text-gray-900 dark:text-white">${activeSeats * 10}</span>
+                        <span className="text-gray-500 dark:text-gray-400 text-base">/month</span>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                        {activeSeats} seat{activeSeats !== 1 ? 's' : ''} · $10/user/month
+                      </p>
+                    </>
+                  )
+                })()}
 
                 <FeatureList features={[
                   'Unlimited contacts',
@@ -1084,38 +1144,31 @@ export default function Settings() {
                 ]} />
 
                 <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className="text-gray-500 dark:text-gray-400">Payment method</span>
-                      <span className="flex items-center gap-1 text-gray-700 dark:text-gray-200">
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M22 4H2v16h20V4zm-2 14H4v-6h16v6zm0-10H4V6h16v2z" />
-                        </svg>
-                        Visa •••• 4242
-                      </span>
-                    </div>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => alert('Invoice history coming soon')}
-                        className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium"
-                      >
-                        Invoices
-                      </button>
-                      <button
-                        onClick={() => alert('Manage billing - redirect to Stripe Customer Portal')}
-                        className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium"
-                      >
-                        Manage
-                      </button>
-                    </div>
+                  <div className="flex items-center justify-end">
+                    <button
+                      onClick={handleOpenPortal}
+                      disabled={portalLoading}
+                      className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium disabled:opacity-60 flex items-center gap-1"
+                    >
+                      {portalLoading && <span className="w-3.5 h-3.5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />}
+                      Manage billing →
+                    </button>
                   </div>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
-                    Next invoice: {new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · ~${(team?.seats ?? 1) * 10}
-                  </p>
+                  {team?.current_period_end ? (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                      Next invoice: {new Date(team.current_period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      {' '}· ${(members.filter(m => m.status === 'active').length || team.seats) * 10}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                      Billing details available in the customer portal.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
           ) : (
+            /* ── Owner trial view ── */
             <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-primary-50 to-violet-50 dark:from-primary-950/30 dark:to-violet-950/20 border border-primary-100 dark:border-primary-900/50 p-6 shadow-sm hover:shadow-md transition-all">
               <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-primary-500/10 to-violet-500/10 rounded-full blur-3xl -mr-20 -mt-20" />
               <div className="relative">

@@ -7,6 +7,7 @@ import {
   acceptInvite,
   getUserActiveMembership,
   removeMember,
+  syncSubscriptionQuantity,
 } from '../lib/billing'
 
 type Step = 'loading' | 'info' | 'auth' | 'accepting' | 'done' | 'error'
@@ -77,12 +78,14 @@ export default function Invite() {
   const doAccept = async (uid: string) => {
     if (!token) return
     setStep('accepting')
-    const { error } = await acceptInvite(token, uid)
+    const { member, error } = await acceptInvite(token, uid)
     if (error) {
       setStep('error')
       setErrorMsg(error.message)
       return
     }
+    // Sync Stripe subscription quantity to reflect the new active seat
+    if (member?.team_id) syncSubscriptionQuantity(member.team_id)
     setStep('done')
     setTimeout(() => navigate('/dashboard'), 2000)
   }

@@ -41,24 +41,31 @@ Deno.serve(async (req) => {
         const customerId = session.customer as string
         const subscriptionId = session.subscription as string
 
+        // Fetch the subscription to get current_period_end
+        let currentPeriodEnd: string | null = null
+        if (subscriptionId) {
+          const subRes = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
+            headers: { Authorization: `Bearer ${stripeSecretKey}` },
+          })
+          if (subRes.ok) {
+            const sub = await subRes.json()
+            if (sub.current_period_end) {
+              currentPeriodEnd = new Date(sub.current_period_end * 1000).toISOString()
+            }
+          }
+        }
+
+        const checkoutUpdate = {
+          stripe_customer_id: customerId,
+          stripe_subscription_id: subscriptionId,
+          subscription_status: 'active',
+          ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
+        }
+
         if (teamId) {
-          await supabase
-            .from('teams')
-            .update({
-              stripe_customer_id: customerId,
-              stripe_subscription_id: subscriptionId,
-              subscription_status: 'active',
-            })
-            .eq('id', teamId)
+          await supabase.from('teams').update(checkoutUpdate).eq('id', teamId)
         } else if (userId) {
-          await supabase
-            .from('teams')
-            .update({
-              stripe_customer_id: customerId,
-              stripe_subscription_id: subscriptionId,
-              subscription_status: 'active',
-            })
-            .eq('owner_id', userId)
+          await supabase.from('teams').update(checkoutUpdate).eq('owner_id', userId)
         }
         break
       }
@@ -68,17 +75,16 @@ Deno.serve(async (req) => {
         const teamId = sub.metadata?.team_id
         const status = mapStripeStatus(sub.status)
         const seats = sub.items.data[0]?.quantity ?? 1
+        const currentPeriodEnd = sub.current_period_end
+          ? new Date(sub.current_period_end * 1000).toISOString()
+          : null
+
+        const updatePayload = { subscription_status: status, seats, current_period_end: currentPeriodEnd }
 
         if (teamId) {
-          await supabase
-            .from('teams')
-            .update({ subscription_status: status, seats })
-            .eq('id', teamId)
+          await supabase.from('teams').update(updatePayload).eq('id', teamId)
         } else {
-          await supabase
-            .from('teams')
-            .update({ subscription_status: status, seats })
-            .eq('stripe_subscription_id', sub.id)
+          await supabase.from('teams').update(updatePayload).eq('stripe_subscription_id', sub.id)
         }
         break
       }

@@ -13,6 +13,7 @@ export interface Team {
   stripe_subscription_id: string | null
   subscription_status: 'trialing' | 'active' | 'canceled' | 'past_due' | 'unpaid'
   seats: number
+  current_period_end: string | null
   created_at: string
   updated_at: string
 }
@@ -67,9 +68,30 @@ export function isSubscribed(team: Team | null): boolean {
 
 // ─── Team CRUD ────────────────────────────────────────────────────────────────
 
-/** Ensure a team exists for the user (creates one if missing - for users who signed up before the trigger). */
+/** Ensure a team exists for the user. Idempotent - handles the case where a team exists but
+ *  the owner team_members row is missing (e.g. after being removed from another team). */
 export async function ensureTeam(userId: string, userEmail: string): Promise<Team | null> {
   const now = new Date().toISOString()
+
+  // Check if team already exists for this user (avoids 409 conflict on insert)
+  const { data: existing } = await supabase
+    .from('teams')
+    .select('*')
+    .eq('owner_id', userId)
+    .maybeSingle()
+
+  if (existing) {
+    // Ensure the owner membership row exists (may be absent if trigger had issues)
+    await supabase
+      .from('team_members')
+      .upsert(
+        { team_id: existing.id, user_id: userId, email: userEmail, role: 'owner', status: 'active', joined_at: now },
+        { onConflict: 'team_id,email' },
+      )
+    return existing as Team
+  }
+
+  // No team exists - create one
   const { data, error } = await supabase
     .from('teams')
     .insert({ owner_id: userId, owner_email: userEmail, name: userEmail, trial_start: now })
@@ -77,12 +99,9 @@ export async function ensureTeam(userId: string, userEmail: string): Promise<Tea
     .single()
   if (error) return null
 
-  // Also insert the owner as an active member
   await supabase
     .from('team_members')
     .insert({ team_id: data.id, user_id: userId, email: userEmail, role: 'owner', status: 'active', joined_at: now })
-    .select()
-    .maybeSingle()
 
   return data as Team
 }
@@ -280,6 +299,38 @@ export async function getMemberActivity(teamId: string, userId?: string) {
 
   const { data, error } = await query
   return { logs: (data ?? []) as TeamActivityLog[], error }
+}
+
+// ─── Stripe Subscription Management ──────────────────────────────────────────
+
+/** Fire-and-forget: sync the Stripe subscription quantity to match active member count. */
+export async function syncSubscriptionQuantity(teamId: string): Promise<void> {
+  try {
+    await supabase.functions.invoke('update-subscription', { body: { team_id: teamId } })
+  } catch {
+    // non-blocking
+  }
+}
+
+/** Open the Stripe Customer Portal for the team owner to manage billing. */
+export async function getStripePortalUrl(): Promise<{ url: string | null; error: string | null }> {
+  const { data: refreshData } = await supabase.auth.refreshSession()
+  const session = refreshData?.session ?? (await supabase.auth.getSession()).data.session
+  if (!session) return { url: null, error: 'Not authenticated. Please sign in again.' }
+
+  const { data, error } = await supabase.functions.invoke('stripe-portal', {
+    body: {},
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  })
+  if (error) {
+    let detail = error.message
+    try {
+      const body = await (error as any).context?.json()
+      if (body) detail = body.error ?? body.message ?? detail
+    } catch {}
+    return { url: null, error: detail ?? 'Failed to open billing portal' }
+  }
+  return { url: data?.url ?? null, error: null }
 }
 
 // ─── Stripe Checkout ─────────────────────────────────────────────────────────

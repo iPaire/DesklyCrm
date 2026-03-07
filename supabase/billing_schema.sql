@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS teams (
   subscription_status    text NOT NULL DEFAULT 'trialing',
   -- values: trialing | active | canceled | past_due | unpaid
   seats                  int NOT NULL DEFAULT 1,
+  current_period_end     timestamptz,
   created_at             timestamptz NOT NULL DEFAULT now(),
   updated_at             timestamptz NOT NULL DEFAULT now()
 );
