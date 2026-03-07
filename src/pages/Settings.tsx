@@ -15,7 +15,6 @@ import {
   getMemberActivity,
   type TeamActivityLog,
 } from '../lib/billing'
-import { createNotification } from '../lib/automations'
 import { Toast } from '../components/Toast'
 import { GmailSettingsPanel } from '../components/GmailSettingsPanel'
 import { AutomationsPanel } from '../components/AutomationsPanel'
@@ -859,15 +858,6 @@ export default function Settings() {
         setLastInviteLink(inviteLink)
         try { await navigator.clipboard.writeText(inviteLink) } catch {}
         const existingUserId = await findUserIdByEmail(member.email)
-        if (existingUserId) {
-          const inviteLink = `${window.location.origin}/invite/${member.invite_token}`
-          await createNotification(
-            existingUserId,
-            'Ai fost invitat în o echipă',
-            `${user.email} te-a invitat să te alături echipei${team.name ? ` "${team.name}"` : ''}. Acceptă invitația pentru a colabora.`,
-            inviteLink,
-          )
-        }
         setToast({
           message: existingUserId
             ? `${member.email} are deja cont - link-ul a fost copiat în clipboard!`
@@ -913,14 +903,6 @@ export default function Settings() {
         setLastInviteLink(inviteLink)
         try { await navigator.clipboard.writeText(inviteLink) } catch {}
         const existingUserId = await findUserIdByEmail(email)
-        if (existingUserId) {
-          await createNotification(
-            existingUserId,
-            'Invitație reînnoită în echipă',
-            `${user.email} ți-a retrimis invitația să te alături echipei${team.name ? ` "${team.name}"` : ''}. Acceptă invitația pentru a colabora.`,
-            inviteLink,
-          )
-        }
         setToast({
           message: existingUserId
             ? `Link reînnoit pentru ${email} - copiat în clipboard!`

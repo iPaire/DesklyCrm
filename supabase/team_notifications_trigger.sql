@@ -4,8 +4,58 @@
 -- ============================================================
 
 -- Creates in-app notifications (bypassing RLS via SECURITY DEFINER) when:
---   1. A team member accepts an invitation  → notify the new member + the owner
+--   1. A new invite is created              → notify the invited user (if they have an account)
+--   2. A team member accepts an invitation  → notify the new member + the owner
 -- ============================================================
+
+-- ── 1. Notify on new invitation ───────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION notify_on_team_invite()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_team_name  TEXT;
+  v_owner_email TEXT;
+  v_invited_user_id UUID;
+  v_invite_link TEXT;
+BEGIN
+  -- Look up team info
+  SELECT COALESCE(t.name, t.owner_email, 'your team'), t.owner_email
+    INTO v_team_name, v_owner_email
+    FROM teams t
+   WHERE t.id = NEW.team_id;
+
+  -- Check if the invited email belongs to an existing user
+  SELECT id INTO v_invited_user_id
+    FROM auth.users
+   WHERE email = NEW.email
+   LIMIT 1;
+
+  -- Only create notification if the user already has an account
+  IF v_invited_user_id IS NOT NULL THEN
+    v_invite_link := '/invite/' || NEW.invite_token::text;
+
+    INSERT INTO notifications (user_id, title, body, link_to)
+    VALUES (
+      v_invited_user_id,
+      'Ai fost invitat într-o echipă',
+      COALESCE(v_owner_email, 'Cineva') || ' te-a invitat să te alături echipei ' || v_team_name || '. Acceptă invitația pentru a colabora.',
+      v_invite_link
+    );
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS trg_team_member_invite ON team_members;
+
+CREATE TRIGGER trg_team_member_invite
+  AFTER INSERT ON team_members
+  FOR EACH ROW
+  WHEN (NEW.role = 'member' AND NEW.status = 'pending')
+  EXECUTE FUNCTION notify_on_team_invite();
+
+-- ── 2. Notify on invitation accepted ─────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION notify_on_team_join()
 RETURNS TRIGGER AS $$

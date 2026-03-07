@@ -308,7 +308,12 @@ export async function getMemberActivity(teamId: string, userId?: string) {
 /** Fire-and-forget: sync the Stripe subscription quantity to match active member count. */
 export async function syncSubscriptionQuantity(teamId: string): Promise<void> {
   try {
-    await supabase.functions.invoke('update-subscription', { body: { team_id: teamId } })
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+    await supabase.functions.invoke('update-subscription', {
+      body: { team_id: teamId },
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
   } catch {
     // non-blocking
   }
