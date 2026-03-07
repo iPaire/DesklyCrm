@@ -27,6 +27,9 @@ ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "team_owner_select" ON teams
   FOR SELECT USING (auth.uid() = owner_id);
 
+CREATE POLICY "team_owner_insert" ON teams
+  FOR INSERT WITH CHECK (auth.uid() = owner_id);
+
 CREATE POLICY "team_owner_update" ON teams
   FOR UPDATE USING (auth.uid() = owner_id);
 

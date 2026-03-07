@@ -54,6 +54,26 @@ export function isSubscribed(team: Team | null): boolean {
 
 // ─── Team CRUD ────────────────────────────────────────────────────────────────
 
+/** Ensure a team exists for the user (creates one if missing - for users who signed up before the trigger). */
+export async function ensureTeam(userId: string, userEmail: string): Promise<Team | null> {
+  const now = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('teams')
+    .insert({ owner_id: userId, owner_email: userEmail, name: userEmail, trial_start: now })
+    .select()
+    .single()
+  if (error) return null
+
+  // Also insert the owner as an active member
+  await supabase
+    .from('team_members')
+    .insert({ team_id: data.id, user_id: userId, email: userEmail, role: 'owner', status: 'active', joined_at: now })
+    .select()
+    .maybeSingle()
+
+  return data as Team
+}
+
 /** Fetch team where the user is the owner. */
 export async function getTeam(userId: string) {
   const { data, error } = await supabase

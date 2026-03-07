@@ -1,6 +1,7 @@
 import { create } from 'zustand'
-import { getTeamAndRole, getTeamMembers, getTrialInfo, isSubscribed } from '../lib/billing'
+import { getTeamAndRole, getTeamMembers, getTrialInfo, isSubscribed, ensureTeam } from '../lib/billing'
 import type { Team, TeamMember, TrialInfo } from '../lib/billing'
+import { supabase } from '../lib/supabase'
 
 interface BillingState {
   team: Team | null
@@ -23,7 +24,14 @@ export const useBillingStore = create<BillingState>((set) => ({
 
   fetchBilling: async (userId: string) => {
     set({ isLoading: true })
-    const { team, role } = await getTeamAndRole(userId)
+    let { team, role } = await getTeamAndRole(userId)
+    if (!team) {
+      // User has no team (signed up before auto-create trigger) - create one now
+      const { data: { user } } = await supabase.auth.getUser()
+      const email = user?.email ?? userId
+      team = await ensureTeam(userId, email)
+      role = team ? 'owner' : null
+    }
     if (!team) {
       set({ isLoading: false })
       return
