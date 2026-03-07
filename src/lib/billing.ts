@@ -111,20 +111,7 @@ export async function getInviteByToken(token: string) {
 // ─── Stripe Checkout ─────────────────────────────────────────────────────────
 
 export async function startStripeCheckout(): Promise<{ url: string | null; error: string | null }> {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) return { url: null, error: 'Not authenticated' }
-
-  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-checkout`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${session.access_token}`,
-      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify({}),
-  })
-
-  const json = await res.json()
-  if (!res.ok) return { url: null, error: json.error ?? 'Failed to start checkout' }
-  return { url: json.url, error: null }
+  const { data, error } = await supabase.functions.invoke('stripe-checkout', { body: {} })
+  if (error) return { url: null, error: error.message ?? 'Failed to start checkout' }
+  return { url: data?.url ?? null, error: null }
 }
