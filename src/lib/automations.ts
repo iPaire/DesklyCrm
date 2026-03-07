@@ -206,7 +206,7 @@ async function checkOverdueTasks(userId: string): Promise<void> {
   )
 }
 
-async function checkAutoArchive(userId: string): Promise<void> {
+async function checkAutoArchive(): Promise<void> {
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - 30)
 
@@ -242,7 +242,7 @@ export async function runDailyChecks(userId: string): Promise<void> {
     await Promise.all([
       isEnabled(automations, 'deal_stale_alert')   && checkStaleDeals(userId),
       isEnabled(automations, 'task_overdue_alert')  && checkOverdueTasks(userId),
-      isEnabled(automations, 'deal_auto_archive')   && checkAutoArchive(userId),
+      isEnabled(automations, 'deal_auto_archive')   && checkAutoArchive(),
     ])
   } catch {
     // Silently fail - daily checks are non-critical
