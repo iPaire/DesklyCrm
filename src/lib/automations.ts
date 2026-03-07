@@ -79,6 +79,15 @@ export async function getUserAutomations(userId: string): Promise<Automation[]> 
   return (data ?? []) as Automation[]
 }
 
+/** Fetch automation settings for a whole team (team_id-scoped rows). */
+export async function getTeamAutomations(teamId: string): Promise<Automation[]> {
+  const { data } = await supabase
+    .from('automations')
+    .select('*')
+    .eq('team_id', teamId)
+  return (data ?? []) as Automation[]
+}
+
 export async function createNotification(
   userId: string,
   title:  string,
@@ -229,10 +238,10 @@ async function checkAutoArchive(): Promise<void> {
 
 // ── Main daily runner (called from Dashboard on mount, once per day) ───────────
 
-export async function runDailyChecks(userId: string): Promise<void> {
+export async function runDailyChecks(userId: string, teamId: string): Promise<void> {
   const today = new Date().toDateString()
 
-  // Gate stored in Supabase so it works across devices/browsers
+  // Gate is per-user (each user tracks their own daily run via user_id row)
   const { data: meta } = await supabase
     .from('automations')
     .select('config')
@@ -251,8 +260,8 @@ export async function runDailyChecks(userId: string): Promise<void> {
     )
 
   try {
-    // getUserAutomations returns all rows including _daily_check; isEnabled only checks known types
-    const automations = await getUserAutomations(userId)
+    // Load TEAM automations to check which are enabled (shared across the whole team)
+    const automations = await getTeamAutomations(teamId)
 
     await Promise.all([
       isEnabled(automations, 'deal_stale_alert')  && checkStaleDeals(userId),

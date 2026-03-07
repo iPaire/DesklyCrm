@@ -26,7 +26,7 @@ import DealModal from '../components/DealModal'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Toast } from '../components/Toast'
 import { useAuthStore } from '../store/authStore'
-import { getUserAutomations, isEnabled, runDealProposalTask } from '../lib/automations'
+import { getTeamAutomations, isEnabled, runDealProposalTask } from '../lib/automations'
 import { useBillingStore } from '../store/billingStore'
 import { logTeamActivity } from '../lib/billing'
 
@@ -481,8 +481,8 @@ export default function Deals() {
         if (team && user) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'stage_changed', entityType: 'deal', entityId: deal.id, entityName: deal.name, details: { from: deal.stage, to: newStage } })
 
         // Automation: deal_proposal_task
-        if (newStage === 'proposal' && user) {
-          const automations = await getUserAutomations(user.id)
+        if (newStage === 'proposal' && user && team) {
+          const automations = await getTeamAutomations(team.id)
           if (isEnabled(automations, 'deal_proposal_task')) {
             await runDealProposalTask(updatedDeal, contacts, user.id)
           }
@@ -526,8 +526,8 @@ export default function Deals() {
       setToast({ message: 'Deal updated!', type: 'success' })
 
       // Automation: deal moved to proposal via modal
-      if (saved.stage === 'proposal' && prev?.stage !== 'proposal' && user) {
-        const automations = await getUserAutomations(user.id)
+      if (saved.stage === 'proposal' && prev?.stage !== 'proposal' && user && team) {
+        const automations = await getTeamAutomations(team.id)
         if (isEnabled(automations, 'deal_proposal_task')) {
           await runDealProposalTask(saved, contacts, user.id)
         }

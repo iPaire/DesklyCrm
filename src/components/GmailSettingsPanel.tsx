@@ -10,7 +10,8 @@ import {
   stripHtml,
 } from '../lib/gmail'
 import type { GmailConnection, EmailLog } from '../types'
-import { getUserAutomations, isEnabled, runEmailFollowupTask } from '../lib/automations'
+import { getTeamAutomations, isEnabled, runEmailFollowupTask } from '../lib/automations'
+import { useBillingStore } from '../store/billingStore'
 
 interface SyncProgress {
   processed: number
@@ -26,6 +27,7 @@ interface Props {
 
 export function GmailSettingsPanel({ onToast }: Props) {
   const user = useAuthStore(s => s.user)
+  const team = useBillingStore(s => s.team)
   const [connection, setConnection]         = useState<GmailConnection | null>(null)
   const [loading, setLoading]               = useState(true)
   const [syncStatus, setSyncStatus]         = useState<SyncStatus>('idle')
@@ -109,8 +111,8 @@ export function GmailSettingsPanel({ onToast }: Props) {
       const messages = await listMessages(accessToken, 'newer_than:30d', 500)
       setProgress({ processed: 0, total: messages.length, saved: 0 })
 
-      // Load automations once before the loop
-      const automations = await getUserAutomations(user.id)
+      // Load team automations once before the loop
+      const automations = team ? await getTeamAutomations(team.id) : []
       const followupEnabled = isEnabled(automations, 'email_followup_task')
 
       let saved = 0

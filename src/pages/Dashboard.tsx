@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase'
 import type { Contact, Deal, Task } from '../types'
 import { useDarkModeStore } from '../store/darkModeStore'
 import { useAuthStore } from '../store/authStore'
+import { useBillingStore } from '../store/billingStore'
 import { runDailyChecks } from '../lib/automations'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -225,6 +226,7 @@ function StatCard({ label, value, sub, subPositive, iconBg, icon, active, onClic
 
 export default function Dashboard() {
   const user = useAuthStore(s => s.user)
+  const team = useBillingStore(s => s.team)
   const [contacts, setContacts] = useState<Contact[]>([])
   const [deals,    setDeals]    = useState<Deal[]>([])
   const [tasks,    setTasks]    = useState<Pick<Task, 'id' | 'due_date' | 'completed'>[]>([])
@@ -305,7 +307,7 @@ export default function Dashboard() {
       setLoading(false)
 
       // Run daily automation checks (stale deals, overdue tasks, auto-archive)
-      if (user) runDailyChecks(user.id)
+      if (user && team) runDailyChecks(user.id, team.id)
     }
     load()
   }, [user])

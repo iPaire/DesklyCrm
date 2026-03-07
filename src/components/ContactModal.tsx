@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 import type { Contact } from '../types'
-import { getUserAutomations, isEnabled, runContactReachOutTask } from '../lib/automations'
+import { getTeamAutomations, isEnabled, runContactReachOutTask } from '../lib/automations'
 import { logTeamActivity } from '../lib/billing'
 import { useBillingStore } from '../store/billingStore'
 import { getColumnDefs, type CustomColumnDef } from '../lib/contactColumns'
@@ -123,9 +123,11 @@ export function ContactModal({ contact, onClose, onSaved }: ContactModalProps) {
       onSaved('Contact added successfully.', newContact)
 
       // Automation: contact_reach_out_task
-      const automations = await getUserAutomations(user.id)
-      if (isEnabled(automations, 'contact_reach_out_task')) {
-        await runContactReachOutTask(newContact, user.id)
+      if (team) {
+        const automations = await getTeamAutomations(team.id)
+        if (isEnabled(automations, 'contact_reach_out_task')) {
+          await runContactReachOutTask(newContact, user.id)
+        }
       }
     }
 

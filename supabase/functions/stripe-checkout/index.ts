@@ -24,6 +24,15 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Validate required secrets
+    if (!stripePriceId) {
+      console.error('STRIPE_PRICE_ID secret is not set')
+      return new Response(JSON.stringify({ error: 'Stripe price not configured. Set STRIPE_PRICE_ID secret.' }), {
+        status: 500,
+        headers: corsHeaders,
+      })
+    }
+
     // Authenticate the user
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
@@ -42,26 +51,31 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Get the user's team
+    // Get the user's team (maybeSingle avoids throwing when no row found)
     const { data: team } = await supabase
       .from('teams')
       .select('id, seats, stripe_customer_id')
       .eq('owner_id', user.id)
-      .single()
+      .maybeSingle()
+
+    if (!team) {
+      return new Response(JSON.stringify({ error: 'Team not found. Only team owners can subscribe.' }), {
+        status: 404,
+        headers: corsHeaders,
+      })
+    }
 
     // Always count live active members so checkout quantity is never stale
-    let seats = 1
-    if (team?.id) {
-      const { count } = await supabase
-        .from('team_members')
-        .select('*', { count: 'exact', head: true })
-        .eq('team_id', team.id)
-        .eq('status', 'active')
-      seats = Math.max(1, count ?? 1)
-      // Keep the seats column in sync while we're here
-      if (seats !== team.seats) {
-        await supabase.from('teams').update({ seats }).eq('id', team.id)
-      }
+    const { count } = await supabase
+      .from('team_members')
+      .select('*', { count: 'exact', head: true })
+      .eq('team_id', team.id)
+      .eq('status', 'active')
+    const seats = Math.max(1, count ?? 1)
+
+    // Keep the seats column in sync
+    if (seats !== team.seats) {
+      await supabase.from('teams').update({ seats }).eq('id', team.id)
     }
 
     // Build Stripe Checkout Session payload
@@ -76,22 +90,22 @@ Deno.serve(async (req) => {
       success_url: `${appUrl}/settings?billing=success`,
       cancel_url: `${appUrl}/settings?billing=canceled`,
       client_reference_id: user.id,
-      customer_email: team?.stripe_customer_id ? undefined : user.email,
+      customer_email: team.stripe_customer_id ? undefined : user.email,
       metadata: {
-        team_id: team?.id ?? '',
+        team_id: team.id,
         user_id: user.id,
       },
       allow_promotion_codes: true,
       subscription_data: {
         metadata: {
-          team_id: team?.id ?? '',
+          team_id: team.id,
           user_id: user.id,
         },
       },
     }
 
     // Reuse existing Stripe customer if available
-    if (team?.stripe_customer_id) {
+    if (team.stripe_customer_id) {
       params.customer = team.stripe_customer_id
       delete params.customer_email
     }

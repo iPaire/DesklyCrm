@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { useAuthStore } from '../store/authStore'
+import { useBillingStore } from '../store/billingStore'
 import { AUTOMATION_DEFS, isEnabled } from '../lib/automations'
 import type { Automation, AutomationType } from '../types'
 
-// ── Custom toggle switch (matches Layout.tsx style) ───────────────────────────
+// ── Custom toggle switch ───────────────────────────────────────────────────────
 
 function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
   return (
@@ -34,28 +34,29 @@ interface Props {
 }
 
 export function AutomationsPanel({ onToast }: Props) {
-  const user = useAuthStore(s => s.user)
+  const team    = useBillingStore(s => s.team)
+  const isOwner = useBillingStore(s => s.isOwner)
   const [automations, setAutomations] = useState<Automation[]>([])
   const [loading, setLoading]         = useState(true)
   const [toggling, setToggling]       = useState<AutomationType | null>(null)
 
   useEffect(() => {
-    if (!user) return
+    if (!team) return
     loadAutomations()
-  }, [user])
+  }, [team])
 
   const loadAutomations = async () => {
     setLoading(true)
     const { data } = await supabase
       .from('automations')
       .select('*')
-      .eq('user_id', user!.id)
+      .eq('team_id', team!.id)
     setAutomations((data ?? []) as Automation[])
     setLoading(false)
   }
 
   const handleToggle = async (type: AutomationType) => {
-    if (!user || toggling) return
+    if (!team || !isOwner || toggling) return
     setToggling(type)
 
     const current = automations.find(a => a.automation_type === type)
@@ -69,23 +70,23 @@ export function AutomationsPanel({ onToast }: Props) {
     } else {
       setAutomations(prev => [...prev, {
         id: 'temp',
-        user_id: user.id,
+        user_id: null,
+        team_id: team.id,
         automation_type: type,
         enabled: newEnabled,
         config: {},
         created_at: new Date().toISOString(),
-      } as Automation])
+      } as unknown as Automation])
     }
 
     const { error } = await supabase
       .from('automations')
       .upsert(
-        { user_id: user.id, automation_type: type, enabled: newEnabled },
-        { onConflict: 'user_id,automation_type' },
+        { team_id: team.id, automation_type: type, enabled: newEnabled },
+        { onConflict: 'team_id,automation_type' },
       )
 
     if (error) {
-      // Revert on failure
       await loadAutomations()
       onToast('Failed to save automation setting.', 'error')
     }
@@ -112,9 +113,14 @@ export function AutomationsPanel({ onToast }: Props) {
 
   return (
     <div className="divide-y divide-gray-100 dark:divide-gray-800 -my-1">
+      {!isOwner && (
+        <p className="text-xs text-gray-500 dark:text-gray-400 pb-3">
+          Automation settings are managed by the team owner.
+        </p>
+      )}
       {AUTOMATION_DEFS.map(def => {
-        const enabled  = isEnabled(automations, def.type)
-        const isBusy   = toggling === def.type
+        const enabled = isEnabled(automations, def.type)
+        const isBusy  = toggling === def.type
 
         return (
           <div key={def.type} className="flex items-start gap-4 py-4 first:pt-0 last:pb-0">
@@ -155,7 +161,7 @@ export function AutomationsPanel({ onToast }: Props) {
                 <Toggle
                   checked={enabled}
                   onChange={() => handleToggle(def.type)}
-                  disabled={!!toggling}
+                  disabled={!!toggling || !isOwner}
                 />
               )}
             </div>
