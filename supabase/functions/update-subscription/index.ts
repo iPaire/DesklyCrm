@@ -36,24 +36,20 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}))
     const teamId = body.team_id as string | undefined
 
-    // Get the team - caller must be owner or active member
+    // Get the team - caller must be the owner OR have any membership row (including just-removed members)
+    // This allows a member who just left to still trigger the seat-count sync.
     let team: Record<string, unknown> | null = null
     if (teamId) {
-      // Verify the caller belongs to this team
-      const { data: membership } = await supabase
-        .from('team_members')
-        .select('role')
-        .eq('team_id', teamId)
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .maybeSingle()
+      const [{ data: ownerTeam }, { data: membership }] = await Promise.all([
+        supabase.from('teams').select('*').eq('id', teamId).eq('owner_id', user.id).maybeSingle(),
+        supabase.from('team_members').select('role').eq('team_id', teamId).eq('user_id', user.id).maybeSingle(),
+      ])
 
-      if (!membership) {
-        return new Response(JSON.stringify({ error: 'Not a team member' }), { status: 403, headers: corsHeaders })
+      if (!ownerTeam && !membership) {
+        return new Response(JSON.stringify({ error: 'Not authorized for this team' }), { status: 403, headers: corsHeaders })
       }
 
-      const { data } = await supabase.from('teams').select('*').eq('id', teamId).single()
-      team = data
+      team = ownerTeam ?? (await supabase.from('teams').select('*').eq('id', teamId).single()).data
     } else {
       // Fall back to the team owned by the caller
       const { data } = await supabase.from('teams').select('*').eq('owner_id', user.id).maybeSingle()
