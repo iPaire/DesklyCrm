@@ -111,7 +111,18 @@ export async function getInviteByToken(token: string) {
 // ─── Stripe Checkout ─────────────────────────────────────────────────────────
 
 export async function startStripeCheckout(): Promise<{ url: string | null; error: string | null }> {
+  // Refresh session first to ensure token is valid (prevents Invalid JWT)
+  await supabase.auth.refreshSession()
+
   const { data, error } = await supabase.functions.invoke('stripe-checkout', { body: {} })
-  if (error) return { url: null, error: error.message ?? 'Failed to start checkout' }
+  if (error) {
+    let detail = error.message
+    try {
+      const body = await (error as any).context?.json()
+      if (body) detail = body.error ?? body.message ?? detail
+    } catch {}
+    console.error('stripe-checkout error:', detail)
+    return { url: null, error: detail ?? 'Failed to start checkout' }
+  }
   return { url: data?.url ?? null, error: null }
 }
