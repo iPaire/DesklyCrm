@@ -770,7 +770,7 @@ export default function Contacts() {
                     <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hidden md:table-cell">Phone</th>
                     <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hidden lg:table-cell">Company</th>
                     {customColumns.map((col) => (
-                      <th key={col.key} className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hidden lg:table-cell">
+                      <th key={col.key} className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
                         {col.label}
                       </th>
                     ))}
@@ -855,7 +855,7 @@ export default function Contacts() {
                                 {contact.company ?? <span className="text-gray-200 dark:text-gray-700">-</span>}
                               </td>
                               {customColumns.map((col) => (
-                                <td key={col.key} className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 hidden lg:table-cell max-w-[160px] truncate">
+                                <td key={col.key} className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 max-w-[160px] truncate">
                                   {contact.custom_fields?.[col.key] || <span className="text-gray-200 dark:text-gray-700">-</span>}
                                 </td>
                               ))}

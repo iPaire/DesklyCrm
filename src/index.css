@@ -5,9 +5,12 @@
 @tailwind utilities;
 
 @layer base {
-  html, body, #root {
+  html, body {
     height: 100%;
     overflow: hidden;
+  }
+  #root {
+    height: 100%;
   }
   body {
     @apply bg-gray-50 dark:bg-gray-950;
