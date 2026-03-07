@@ -27,7 +27,6 @@ export interface TeamMember {
   invite_token: string
   invited_at: string
   joined_at: string | null
-  expires_at: string | null
 }
 
 export interface TrialInfo {
@@ -121,15 +120,12 @@ export async function inviteMember(teamId: string, email: string) {
 }
 
 export async function resendInvite(memberId: string) {
-  // Fresh token + reset 7-day window
-  const newToken = crypto.randomUUID()
-  const newExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+  // Fresh token + reset invited_at timestamp
   const { data, error } = await supabase
     .from('team_members')
     .update({
-      invite_token: newToken,
+      invite_token: crypto.randomUUID(),
       invited_at: new Date().toISOString(),
-      expires_at: newExpiry,
     })
     .eq('id', memberId)
     .select()
@@ -177,6 +173,17 @@ export async function getUserActiveMembership(userId: string) {
     .eq('status', 'active')
     .maybeSingle()
   return data as { id: string; team_id: string; role: string } | null
+}
+
+/** Returns the user_id if an account with this email already exists (registered users appear in team_members with a non-null user_id). */
+export async function findUserIdByEmail(email: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('team_members')
+    .select('user_id')
+    .eq('email', email.toLowerCase().trim())
+    .not('user_id', 'is', null)
+    .maybeSingle()
+  return data?.user_id ?? null
 }
 
 // ─── Invite email via edge function ──────────────────────────────────────────

@@ -8,9 +8,10 @@ import {
   removeMember,
   resendInvite,
   cancelInvite,
-  sendInviteEmail,
   startStripeCheckout,
+  findUserIdByEmail,
 } from '../lib/billing'
+import { createNotification } from '../lib/automations'
 import { Toast } from '../components/Toast'
 import { GmailSettingsPanel } from '../components/GmailSettingsPanel'
 import { AutomationsPanel } from '../components/AutomationsPanel'
@@ -133,6 +134,11 @@ const MemberRow = ({
   onCancel,
   isRemoving,
   isResending,
+  recentlyResent,
+  showLeave,
+  showRemove,
+  showResend,
+  showCancel,
 }: {
   member: any
   isCurrentUser: boolean
@@ -141,16 +147,20 @@ const MemberRow = ({
   onCancel: () => void
   isRemoving: boolean
   isResending: boolean
+  recentlyResent: boolean
+  showLeave: boolean
+  showRemove: boolean
+  showResend: boolean
+  showCancel: boolean
 }) => {
-  const isOwner = member.role === 'owner'
-  const isPending = member.status === 'pending'
+  const isOwnerRow = member.role === 'owner'
   const initial = member.email[0].toUpperCase()
   const statusColor = member.status === 'active'
     ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
     : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
 
   return (
-    <div className="flex items-center gap-4 p-3 bg-gray-50/80 dark:bg-gray-800/50 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group">
+    <div className="flex items-center gap-4 p-3 bg-gray-50/80 dark:bg-gray-800/50 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
       <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 dark:from-primary-600 dark:to-primary-800 flex items-center justify-center text-white text-sm font-bold shadow-sm shrink-0">
         {initial}
       </div>
@@ -162,35 +172,50 @@ const MemberRow = ({
           )}
         </div>
         <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-xs text-gray-500 dark:text-gray-400 capitalize">{isOwner ? 'Owner' : 'Member'}</span>
+          <span className="text-xs text-gray-500 dark:text-gray-400">{isOwnerRow ? 'Owner' : 'Member'}</span>
           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusColor}`}>
             {member.status === 'active' ? 'Active' : 'Pending'}
           </span>
         </div>
       </div>
-      {!isOwner && (
-        <div className="flex items-center gap-1 shrink-0">
-          {isPending && (
-            <button
-              onClick={onResend}
-              disabled={isResending}
-              className="p-2 text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 transition-colors disabled:opacity-40"
-              title="Resend invite"
-            >
-              {isResending ? (
-                <span className="block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              )}
-            </button>
-          )}
+      <div className="flex items-center gap-1 shrink-0">
+        {showLeave && (
           <button
-            onClick={isPending ? onCancel : onRemove}
+            onClick={onRemove}
+            disabled={isRemoving}
+            className="px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors disabled:opacity-40"
+          >
+            {isRemoving ? (
+              <span className="block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            ) : 'Leave team'}
+          </button>
+        )}
+        {showResend && (
+          <button
+            onClick={onResend}
+            disabled={isResending || recentlyResent}
+            className="p-2 text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 transition-colors disabled:opacity-40"
+            title={recentlyResent ? 'Link deja trimis' : 'Resend invite'}
+          >
+            {isResending ? (
+              <span className="block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            ) : recentlyResent ? (
+              <svg className="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            )}
+          </button>
+        )}
+        {(showRemove || showCancel) && (
+          <button
+            onClick={showCancel ? onCancel : onRemove}
             disabled={isRemoving}
             className="p-2 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors disabled:opacity-40"
-            title={isPending ? 'Cancel invite' : 'Remove member'}
+            title={showCancel ? 'Cancel invite' : 'Remove member'}
           >
             {isRemoving ? (
               <span className="block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -200,8 +225,8 @@ const MemberRow = ({
               </svg>
             )}
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
@@ -610,6 +635,8 @@ export default function Settings() {
   const [upgradeLoading, setUpgradeLoading] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
+  const [inviteSent, setInviteSent] = useState(false)
+  const [recentlyResentIds, setRecentlyResentIds] = useState<Set<string>>(new Set())
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [resendingId, setResendingId] = useState<string | null>(null)
   const [confirmRemoveMember, setConfirmRemoveMember] = useState<{ id: string; email: string } | null>(null)
@@ -657,31 +684,43 @@ export default function Settings() {
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!team || !user) return
-    setInviteLoading(true)
-    const { member, error } = await inviteMember(team.id, inviteEmail)
-    if (error) {
-      setToast({ message: error.message, type: 'error' })
-    } else if (member) {
-      setMembers([...members, member])
-      setInviteEmail('')
-      // Send invite email; fall back to showing the link if email fails
-      const { error: emailError } = await sendInviteEmail({
-        email: member.email,
-        inviteToken: member.invite_token,
-        inviterEmail: user.email ?? '',
-        teamName: team.name,
-      })
-      if (emailError) {
-        setToast({
-          message: `Invite created - email delivery failed. Share this link: ${window.location.origin}/invite/${member.invite_token}`,
-          type: 'error',
-        })
-      } else {
-        setToast({ message: `Invite email sent to ${member.email}`, type: 'success' })
-      }
+    if (!user) return
+    if (!team) {
+      setToast({ message: 'Echipa nu a fost încărcată. Reîncarcă pagina.', type: 'error' })
+      return
     }
-    setInviteLoading(false)
+    setInviteLoading(true)
+    try {
+      const { member, error } = await inviteMember(team.id, inviteEmail)
+      if (error) {
+        setToast({ message: error.message, type: 'error' })
+      } else if (member) {
+        setMembers([...members, member])
+        setInviteEmail('')
+        setInviteSent(true)
+        setTimeout(() => setInviteSent(false), 5000)
+        const inviteLink = `${window.location.origin}/invite/${member.invite_token}`
+        const existingUserId = await findUserIdByEmail(member.email)
+        if (existingUserId) {
+          await createNotification(
+            existingUserId,
+            `Ai fost invitat în echipa ${team.name ?? user.email}`,
+            `Acceptă invitația accesând link-ul: ${inviteLink}`,
+            `/invite/${member.invite_token}`,
+          )
+          setToast({ message: `${member.email} are cont și a primit notificare în aplicație!`, type: 'success' })
+        } else {
+          setToast({
+            message: `Invitație creată! Trimite acest link lui ${member.email}: ${inviteLink}`,
+            type: 'success',
+          })
+        }
+      }
+    } catch (err) {
+      setToast({ message: 'A apărut o eroare neașteptată. Încearcă din nou.', type: 'error' })
+    } finally {
+      setInviteLoading(false)
+    }
   }
 
   const handleRemoveMember = async (memberId: string) => {
@@ -700,27 +739,36 @@ export default function Settings() {
   const handleResendInvite = async (memberId: string, email: string) => {
     if (!team || !user) return
     setResendingId(memberId)
-    const { member, error } = await resendInvite(memberId)
-    if (error) {
-      setToast({ message: error.message, type: 'error' })
-    } else if (member) {
-      setMembers(members.map(m => m.id === memberId ? member : m))
-      const { error: emailError } = await sendInviteEmail({
-        email,
-        inviteToken: member.invite_token,
-        inviterEmail: user.email ?? '',
-        teamName: team.name,
-      })
-      if (emailError) {
-        setToast({
-          message: `Invite link reset - email failed. Share: ${window.location.origin}/invite/${member.invite_token}`,
-          type: 'error',
-        })
-      } else {
-        setToast({ message: `Invite resent to ${email}`, type: 'success' })
+    try {
+      const { member, error } = await resendInvite(memberId)
+      if (error) {
+        setToast({ message: error.message, type: 'error' })
+      } else if (member) {
+        setMembers(members.map(m => m.id === memberId ? member : m))
+        setRecentlyResentIds(prev => new Set(prev).add(memberId))
+        setTimeout(() => setRecentlyResentIds(prev => { const next = new Set(prev); next.delete(memberId); return next }), 10000)
+        const inviteLink = `${window.location.origin}/invite/${member.invite_token}`
+        const existingUserId = await findUserIdByEmail(email)
+        if (existingUserId) {
+          await createNotification(
+            existingUserId,
+            `Invitație reînnoită - ${team.name ?? user.email}`,
+            `Link-ul de invitație a fost reînnoit. Acceptă accesând: ${inviteLink}`,
+            `/invite/${member.invite_token}`,
+          )
+          setToast({ message: `${email} are cont și a primit o nouă notificare în aplicație!`, type: 'success' })
+        } else {
+          setToast({
+            message: `Link nou generat pentru ${email}: ${inviteLink}`,
+            type: 'success',
+          })
+        }
       }
+    } catch {
+      setToast({ message: 'A apărut o eroare neașteptată.', type: 'error' })
+    } finally {
+      setResendingId(null)
     }
-    setResendingId(null)
   }
 
   const handleCancelInvite = async (memberId: string) => {
@@ -732,6 +780,20 @@ export default function Settings() {
       setMembers(members.filter(m => m.id !== memberId))
     }
     setRemovingId(null)
+  }
+
+  const handleLeaveTeam = async () => {
+    if (!user) return
+    const myMembership = members.find(m => m.user_id === user.id || m.email === user.email)
+    if (!myMembership) return
+    setRemovingId(myMembership.id)
+    const { error } = await removeMember(myMembership.id)
+    if (error) {
+      setToast({ message: error.message, type: 'error' })
+      setRemovingId(null)
+    } else {
+      await fetchBilling(user.id)
+    }
   }
 
   const handleDeleteAccount = async () => {
@@ -997,64 +1059,71 @@ export default function Settings() {
         >
           {members.length > 0 && (
             <div className="space-y-3 mb-6">
-              {members.map(m => (
-                <MemberRow
-                  key={m.id}
-                  member={m}
-                  isCurrentUser={m.user_id === user?.id || m.email === user?.email}
-                  onRemove={() => setConfirmRemoveMember({ id: m.id, email: m.email })}
-                  onResend={() => handleResendInvite(m.id, m.email)}
-                  onCancel={() => handleCancelInvite(m.id)}
-                  isRemoving={removingId === m.id}
-                  isResending={resendingId === m.id}
-                />
-              ))}
+              {members.map(m => {
+                const isMe = m.user_id === user?.id || m.email === user?.email
+                const isOwnerRow = m.role === 'owner'
+                const isPending = m.status === 'pending'
+                return (
+                  <MemberRow
+                    key={m.id}
+                    member={m}
+                    isCurrentUser={isMe}
+                    onRemove={() => {
+                      if (isMe) handleLeaveTeam()
+                      else setConfirmRemoveMember({ id: m.id, email: m.email })
+                    }}
+                    onResend={() => handleResendInvite(m.id, m.email)}
+                    onCancel={() => handleCancelInvite(m.id)}
+                    isRemoving={removingId === m.id}
+                    isResending={resendingId === m.id}
+                    recentlyResent={recentlyResentIds.has(m.id)}
+                    showLeave={isMe && !isOwnerRow}
+                    showRemove={!isMe && !isPending && isOwner}
+                    showResend={!isMe && isPending && isOwner}
+                    showCancel={!isMe && isPending && isOwner}
+                  />
+                )
+              })}
             </div>
           )}
 
-          {subscribed && team && isOwner && (
+          {subscribed && team && (
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 text-center">
               {members.filter(m => m.status === 'active').length} active seat{members.filter(m => m.status === 'active').length !== 1 ? 's' : ''} · $10/seat/month
             </p>
           )}
 
-          {isOwner && (
-            <>
-              <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3">
-                <input
-                  type="email"
-                  required
-                  value={inviteEmail}
-                  onChange={e => setInviteEmail(e.target.value)}
-                  placeholder="teammate@example.com"
-                  className="flex-1 px-4 py-2.5 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
-                />
-                <button
-                  type="submit"
-                  disabled={inviteLoading}
-                  className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white text-sm font-medium rounded-xl transition-all shadow-sm hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
-                >
-                  {inviteLoading ? (
-                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                  )}
-                  Invite
-                </button>
-              </form>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-3 text-center">
-                An invitation email will be sent to your teammate.
-              </p>
-            </>
-          )}
-
-          {!isOwner && members.length === 0 && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
-              You are a member of this team.
-            </p>
-          )}
+          <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3">
+            <input
+              type="email"
+              required
+              value={inviteEmail}
+              onChange={e => setInviteEmail(e.target.value)}
+              placeholder="teammate@example.com"
+              className="flex-1 px-4 py-2.5 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
+            />
+            <button
+              type="submit"
+              disabled={inviteLoading || inviteSent}
+              className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white text-sm font-medium rounded-xl transition-all shadow-sm hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {inviteLoading ? (
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              ) : inviteSent ? (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              )}
+              {inviteSent ? 'Link copiat!' : 'Invite'}
+            </button>
+          </form>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-3 text-center">
+            Copiază link-ul din notificare și trimite-l colegului.
+          </p>
         </SectionCard>
 
         {/* Remove member confirmation modal */}
