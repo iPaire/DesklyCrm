@@ -5,12 +5,13 @@ import { useAuthStore } from '../store/authStore'
 import {
   getInviteByToken,
   acceptInvite,
+  declineInvite,
   getUserActiveMembership,
   removeMember,
   syncSubscriptionQuantity,
 } from '../lib/billing'
 
-type Step = 'loading' | 'info' | 'auth' | 'accepting' | 'done' | 'error'
+type Step = 'loading' | 'info' | 'auth' | 'accepting' | 'done' | 'declining' | 'declined' | 'error'
 
 export default function Invite() {
   const { token } = useParams<{ token: string }>()
@@ -74,6 +75,14 @@ export default function Invite() {
       }
     })
   }, [user, invite])
+
+  const handleDecline = async () => {
+    if (!token) return
+    setStep('declining')
+    await declineInvite(token)
+    setStep('declined')
+    setTimeout(() => navigate(user ? '/dashboard' : '/login'), 2000)
+  }
 
   const doAccept = async (uid: string) => {
     if (!token) return
@@ -195,6 +204,35 @@ export default function Invite() {
     )
   }
 
+  // ── Declining ──
+  if (step === 'declining') {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <div className="text-center">
+          <span className="w-8 h-8 border-2 border-gray-400 border-t-transparent rounded-full animate-spin inline-block" />
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-3">Declining invitation…</p>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Declined ──
+  if (step === 'declined') {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center px-4">
+        <div className="text-center max-w-sm">
+          <div className="w-14 h-14 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-7 h-7 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Invitation declined</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Redirecting…</p>
+        </div>
+      </div>
+    )
+  }
+
   // ── Info / Auth ──
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex flex-col items-center justify-center px-4">
@@ -268,14 +306,28 @@ export default function Invite() {
                       >
                         {existingMembershipId ? 'Switch team & accept →' : 'Accept Invitation →'}
                       </button>
+                      <button
+                        onClick={handleDecline}
+                        className="w-full py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                      >
+                        Decline invitation
+                      </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={handleProceed}
-                      className="w-full py-2.5 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white font-semibold rounded-xl transition-all"
-                    >
-                      Accept Invitation →
-                    </button>
+                    <div className="space-y-3">
+                      <button
+                        onClick={handleProceed}
+                        className="w-full py-2.5 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white font-semibold rounded-xl transition-all"
+                      >
+                        Accept Invitation →
+                      </button>
+                      <button
+                        onClick={handleDecline}
+                        className="w-full py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                      >
+                        Decline invitation
+                      </button>
+                    </div>
                   )}
                 </>
               )}

@@ -24,7 +24,7 @@ export interface TeamMember {
   user_id: string | null
   email: string
   role: 'owner' | 'member'
-  status: 'pending' | 'active'
+  status: 'pending' | 'active' | 'denied'
   invite_token: string
   invited_at: string
   joined_at: string | null
@@ -199,6 +199,15 @@ export async function removeMember(memberId: string) {
 
 export async function cancelInvite(memberId: string) {
   return removeMember(memberId)
+}
+
+export async function declineInvite(inviteToken: string) {
+  const { error } = await supabase
+    .from('team_members')
+    .update({ status: 'denied' })
+    .eq('invite_token', inviteToken)
+    .eq('status', 'pending')
+  return { error }
 }
 
 export async function acceptInvite(inviteToken: string, userId: string) {

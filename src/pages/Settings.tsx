@@ -168,6 +168,8 @@ const MemberRow = ({
   const initial = member.email[0].toUpperCase()
   const statusColor = member.status === 'active'
     ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+    : member.status === 'denied'
+    ? 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400'
     : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
 
   return (
@@ -185,7 +187,7 @@ const MemberRow = ({
         <div className="flex items-center gap-2 mt-0.5">
           <span className="text-xs text-gray-500 dark:text-gray-400">{isOwnerRow ? 'Owner' : 'Member'}</span>
           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusColor}`}>
-            {member.status === 'active' ? 'Active' : 'Pending'}
+            {member.status === 'active' ? 'Active' : member.status === 'denied' ? 'Denied' : 'Pending'}
           </span>
         </div>
       </div>
@@ -1247,6 +1249,7 @@ export default function Settings() {
                 const isMe = m.user_id === user?.id || m.email === user?.email
                 const isOwnerRow = m.role === 'owner'
                 const isPending = m.status === 'pending'
+                const isDenied = m.status === 'denied'
                 return (
                   <MemberRow
                     key={m.id}
@@ -1269,7 +1272,7 @@ export default function Settings() {
                     isResending={resendingId === m.id}
                     recentlyResent={recentlyResentIds.has(m.id)}
                     showLeave={isMe && !isOwnerRow}
-                    showRemove={!isMe && !isPending && isOwner}
+                    showRemove={!isMe && (!isPending || isDenied) && isOwner}
                     showResend={!isMe && isPending && isOwner}
                     showCancel={!isMe && isPending && isOwner}
                     showCopyLink={!isMe && isPending && isOwner}
