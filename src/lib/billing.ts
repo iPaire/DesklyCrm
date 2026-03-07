@@ -72,6 +72,15 @@ export async function getTeam(userId: string) {
 export async function getTeamAndRole(
   userId: string,
 ): Promise<{ team: Team | null; role: 'owner' | 'member' | null }> {
+  // Check if user owns a team first (owners are identified by teams.owner_id)
+  const { data: ownedTeam } = await supabase
+    .from('teams')
+    .select('*')
+    .eq('owner_id', userId)
+    .maybeSingle()
+  if (ownedTeam) return { team: ownedTeam as Team, role: 'owner' }
+
+  // Otherwise check if they're an active member of someone else's team
   const { data: membership } = await supabase
     .from('team_members')
     .select('team_id, role')
