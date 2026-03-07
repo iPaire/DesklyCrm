@@ -70,14 +70,14 @@ CREATE POLICY "team_owner_member_all" ON team_members
 CREATE POLICY "member_self_select" ON team_members
   FOR SELECT USING (
     user_id = auth.uid()
-    OR email = (SELECT email FROM auth.users WHERE id = auth.uid())
+    OR email = auth.email()
   );
 
 -- Members can update their own record (to join/accept)
 CREATE POLICY "member_self_update" ON team_members
   FOR UPDATE USING (
     user_id = auth.uid()
-    OR email = (SELECT email FROM auth.users WHERE id = auth.uid())
+    OR email = auth.email()
   );
 
 -- Anyone can read by invite_token (for accepting invites before login)

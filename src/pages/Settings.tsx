@@ -11,7 +11,6 @@ import {
   startStripeCheckout,
   findUserIdByEmail,
 } from '../lib/billing'
-import { createNotification } from '../lib/automations'
 import { Toast } from '../components/Toast'
 import { GmailSettingsPanel } from '../components/GmailSettingsPanel'
 import { AutomationsPanel } from '../components/AutomationsPanel'
@@ -132,6 +131,7 @@ const MemberRow = ({
   onRemove,
   onResend,
   onCancel,
+  onCopyLink,
   isRemoving,
   isResending,
   recentlyResent,
@@ -139,12 +139,14 @@ const MemberRow = ({
   showRemove,
   showResend,
   showCancel,
+  showCopyLink,
 }: {
   member: any
   isCurrentUser: boolean
   onRemove: () => void
   onResend: () => void
   onCancel: () => void
+  onCopyLink?: () => void
   isRemoving: boolean
   isResending: boolean
   recentlyResent: boolean
@@ -152,6 +154,7 @@ const MemberRow = ({
   showRemove: boolean
   showResend: boolean
   showCancel: boolean
+  showCopyLink?: boolean
 }) => {
   const isOwnerRow = member.role === 'owner'
   const initial = member.email[0].toUpperCase()
@@ -188,6 +191,17 @@ const MemberRow = ({
             {isRemoving ? (
               <span className="block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
             ) : 'Leave team'}
+          </button>
+        )}
+        {showCopyLink && (
+          <button
+            onClick={onCopyLink}
+            className="p-2 text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 transition-colors"
+            title="Copiază link-ul de invitație"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
           </button>
         )}
         {showResend && (
@@ -636,6 +650,7 @@ export default function Settings() {
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
   const [inviteSent, setInviteSent] = useState(false)
+  const [lastInviteLink, setLastInviteLink] = useState<string | null>(null)
   const [recentlyResentIds, setRecentlyResentIds] = useState<Set<string>>(new Set())
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [resendingId, setResendingId] = useState<string | null>(null)
@@ -700,21 +715,15 @@ export default function Settings() {
         setInviteSent(true)
         setTimeout(() => setInviteSent(false), 5000)
         const inviteLink = `${window.location.origin}/invite/${member.invite_token}`
+        setLastInviteLink(inviteLink)
+        try { await navigator.clipboard.writeText(inviteLink) } catch {}
         const existingUserId = await findUserIdByEmail(member.email)
-        if (existingUserId) {
-          await createNotification(
-            existingUserId,
-            `Ai fost invitat în echipa ${team.name ?? user.email}`,
-            `Acceptă invitația accesând link-ul: ${inviteLink}`,
-            `/invite/${member.invite_token}`,
-          )
-          setToast({ message: `${member.email} are cont și a primit notificare în aplicație!`, type: 'success' })
-        } else {
-          setToast({
-            message: `Invitație creată! Trimite acest link lui ${member.email}: ${inviteLink}`,
-            type: 'success',
-          })
-        }
+        setToast({
+          message: existingUserId
+            ? `${member.email} are deja cont - link-ul a fost copiat în clipboard!`
+            : `Invitație creată pentru ${member.email} - link copiat în clipboard!`,
+          type: 'success',
+        })
       }
     } catch (err) {
       setToast({ message: 'A apărut o eroare neașteptată. Încearcă din nou.', type: 'error' })
@@ -748,21 +757,15 @@ export default function Settings() {
         setRecentlyResentIds(prev => new Set(prev).add(memberId))
         setTimeout(() => setRecentlyResentIds(prev => { const next = new Set(prev); next.delete(memberId); return next }), 10000)
         const inviteLink = `${window.location.origin}/invite/${member.invite_token}`
+        setLastInviteLink(inviteLink)
+        try { await navigator.clipboard.writeText(inviteLink) } catch {}
         const existingUserId = await findUserIdByEmail(email)
-        if (existingUserId) {
-          await createNotification(
-            existingUserId,
-            `Invitație reînnoită - ${team.name ?? user.email}`,
-            `Link-ul de invitație a fost reînnoit. Acceptă accesând: ${inviteLink}`,
-            `/invite/${member.invite_token}`,
-          )
-          setToast({ message: `${email} are cont și a primit o nouă notificare în aplicație!`, type: 'success' })
-        } else {
-          setToast({
-            message: `Link nou generat pentru ${email}: ${inviteLink}`,
-            type: 'success',
-          })
-        }
+        setToast({
+          message: existingUserId
+            ? `Link reînnoit pentru ${email} - copiat în clipboard!`
+            : `Link nou generat pentru ${email} - copiat în clipboard!`,
+          type: 'success',
+        })
       }
     } catch {
       setToast({ message: 'A apărut o eroare neașteptată.', type: 'error' })
@@ -1074,6 +1077,12 @@ export default function Settings() {
                     }}
                     onResend={() => handleResendInvite(m.id, m.email)}
                     onCancel={() => handleCancelInvite(m.id)}
+                    onCopyLink={async () => {
+                      const link = `${window.location.origin}/invite/${m.invite_token}`
+                      setLastInviteLink(link)
+                      try { await navigator.clipboard.writeText(link) } catch {}
+                      setToast({ message: `Link copiat pentru ${m.email}!`, type: 'success' })
+                    }}
                     isRemoving={removingId === m.id}
                     isResending={resendingId === m.id}
                     recentlyResent={recentlyResentIds.has(m.id)}
@@ -1081,6 +1090,7 @@ export default function Settings() {
                     showRemove={!isMe && !isPending && isOwner}
                     showResend={!isMe && isPending && isOwner}
                     showCancel={!isMe && isPending && isOwner}
+                    showCopyLink={!isMe && isPending && isOwner}
                   />
                 )
               })}
@@ -1093,37 +1103,67 @@ export default function Settings() {
             </p>
           )}
 
-          <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3">
-            <input
-              type="email"
-              required
-              value={inviteEmail}
-              onChange={e => setInviteEmail(e.target.value)}
-              placeholder="teammate@example.com"
-              className="flex-1 px-4 py-2.5 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
-            />
-            <button
-              type="submit"
-              disabled={inviteLoading || inviteSent}
-              className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white text-sm font-medium rounded-xl transition-all shadow-sm hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
-            >
-              {inviteLoading ? (
-                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              ) : inviteSent ? (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
+          {isOwner && (
+            <>
+              <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="email"
+                  required
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  placeholder="teammate@example.com"
+                  className="flex-1 px-4 py-2.5 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
+                />
+                <button
+                  type="submit"
+                  disabled={inviteLoading || inviteSent}
+                  className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white text-sm font-medium rounded-xl transition-all shadow-sm hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {inviteLoading ? (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : inviteSent ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  )}
+                  {inviteSent ? 'Link copiat!' : 'Invite'}
+                </button>
+              </form>
+
+              {lastInviteLink && (
+                <div className="mt-3 flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800/60 rounded-xl border border-gray-200 dark:border-gray-700">
+                  <span className="text-xs text-gray-500 dark:text-gray-400 flex-1 truncate font-mono">{lastInviteLink}</span>
+                  <button
+                    onClick={async () => {
+                      try { await navigator.clipboard.writeText(lastInviteLink) } catch {}
+                      setToast({ message: 'Link copiat în clipboard!', type: 'success' })
+                    }}
+                    className="shrink-0 px-2.5 py-1 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
+                  >
+                    Copiază
+                  </button>
+                  <button
+                    onClick={() => setLastInviteLink(null)}
+                    className="shrink-0 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 transition-colors"
+                    title="Închide"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               )}
-              {inviteSent ? 'Link copiat!' : 'Invite'}
-            </button>
-          </form>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-3 text-center">
-            Copiază link-ul din notificare și trimite-l colegului.
-          </p>
+              {!lastInviteLink && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-3 text-center">
+                  Link-ul de invitație va apărea aici după ce inviți un coleg.
+                </p>
+              )}
+            </>
+          )}
         </SectionCard>
 
         {/* Remove member confirmation modal */}

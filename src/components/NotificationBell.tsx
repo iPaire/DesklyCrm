@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
@@ -24,6 +24,19 @@ export function NotificationBell() {
   const [unreadCount,   setUnreadCount]   = useState(0)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
+  const fetchNotifications = useCallback(async () => {
+    if (!user) return
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(30)
+    const items = (data ?? []) as Notification[]
+    setNotifications(items)
+    setUnreadCount(items.filter(n => !n.read).length)
+  }, [user])
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -35,26 +48,27 @@ export function NotificationBell() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // Fetch notifications on mount + every 60s
+  // Fetch on mount
   useEffect(() => {
     if (!user) return
     fetchNotifications()
-    const interval = setInterval(fetchNotifications, 60_000)
-    return () => clearInterval(interval)
-  }, [user])
+  }, [user, fetchNotifications])
 
-  const fetchNotifications = async () => {
+  // Realtime subscription - reacts to INSERT / UPDATE / DELETE instantly
+  useEffect(() => {
     if (!user) return
-    const { data } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(20)
-    const items = (data ?? []) as Notification[]
-    setNotifications(items)
-    setUnreadCount(items.filter(n => !n.read).length)
-  }
+
+    const channel = supabase
+      .channel(`notifications:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` },
+        () => { fetchNotifications() },
+      )
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [user, fetchNotifications])
 
   const markAllRead = async () => {
     if (!user || unreadCount === 0) return
@@ -77,6 +91,16 @@ export function NotificationBell() {
     if (n.link_to) navigate(n.link_to)
   }
 
+  const dismissOne = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation()
+    await supabase.from('notifications').delete().eq('id', id)
+    setNotifications(prev => {
+      const next = prev.filter(n => n.id !== id)
+      setUnreadCount(next.filter(n => !n.read).length)
+      return next
+    })
+  }
+
   const clearAll = async () => {
     if (!user) return
     await supabase.from('notifications').delete().eq('user_id', user.id)
@@ -89,7 +113,7 @@ export function NotificationBell() {
     <div ref={dropdownRef} className="relative">
       {/* Bell button */}
       <button
-        onClick={() => { setOpen(o => !o); if (!open) fetchNotifications() }}
+        onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-[13px] font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
       >
         <span className="flex items-center gap-3">
@@ -153,42 +177,44 @@ export function NotificationBell() {
               </div>
             ) : (
               notifications.map(n => (
-                <button
+                <div
                   key={n.id}
-                  onClick={() => handleNotificationClick(n)}
-                  className={`w-full text-left px-4 py-3 border-b border-gray-50 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
+                  className={`group relative flex items-start gap-2.5 px-4 py-3 border-b border-gray-50 dark:border-gray-800 last:border-0 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
                     n.read ? '' : 'bg-primary-50/50 dark:bg-primary-950/20'
                   }`}
+                  onClick={() => handleNotificationClick(n)}
                 >
-                  <div className="flex items-start gap-2.5">
-                    {/* Unread dot */}
-                    <div className="mt-1.5 shrink-0">
-                      {n.read ? (
-                        <div className="w-2 h-2 rounded-full bg-transparent" />
-                      ) : (
-                        <div className="w-2 h-2 rounded-full bg-primary-500" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-xs font-semibold leading-snug ${n.read ? 'text-gray-600 dark:text-gray-400' : 'text-gray-900 dark:text-white'}`}>
-                        {n.title}
-                      </p>
-                      {n.body && (
-                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 whitespace-pre-line line-clamp-3">
-                          {n.body}
-                        </p>
-                      )}
-                      <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-1">
-                        {relativeTime(n.created_at)}
-                      </p>
-                    </div>
-                    {n.link_to && (
-                      <svg className="w-3 h-3 text-gray-300 dark:text-gray-600 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    )}
+                  {/* Unread dot */}
+                  <div className="mt-1.5 shrink-0">
+                    {n.read
+                      ? <div className="w-2 h-2 rounded-full bg-transparent" />
+                      : <div className="w-2 h-2 rounded-full bg-primary-500" />
+                    }
                   </div>
-                </button>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-xs font-semibold leading-snug ${n.read ? 'text-gray-600 dark:text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+                      {n.title}
+                    </p>
+                    {n.body && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 whitespace-pre-line line-clamp-3">
+                        {n.body}
+                      </p>
+                    )}
+                    <p className="text-[10px] text-gray-300 dark:text-gray-600 mt-1">
+                      {relativeTime(n.created_at)}
+                    </p>
+                  </div>
+                  {/* Per-notification dismiss button */}
+                  <button
+                    onClick={(e) => dismissOne(e, n.id)}
+                    className="opacity-0 group-hover:opacity-100 shrink-0 mt-0.5 p-0.5 rounded text-gray-300 hover:text-red-400 dark:text-gray-600 dark:hover:text-red-400 transition-all"
+                    title="Dismiss"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               ))
             )}
           </div>

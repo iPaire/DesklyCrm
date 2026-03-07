@@ -230,19 +230,34 @@ async function checkAutoArchive(): Promise<void> {
 // ── Main daily runner (called from Dashboard on mount, once per day) ───────────
 
 export async function runDailyChecks(userId: string): Promise<void> {
-  const key = `deskly-auto-check-${new Date().toDateString()}`
-  if (localStorage.getItem(key)) return   // already ran today
+  const today = new Date().toDateString()
 
-  // Mark as done immediately so a failed check doesn't cause infinite retries
-  localStorage.setItem(key, '1')
+  // Gate stored in Supabase so it works across devices/browsers
+  const { data: meta } = await supabase
+    .from('automations')
+    .select('config')
+    .eq('user_id', userId)
+    .eq('automation_type', '_daily_check')
+    .maybeSingle()
+
+  if ((meta?.config as Record<string, unknown> | null)?.lastRun === today) return
+
+  // Mark as ran immediately to prevent duplicate runs (even cross-device)
+  await supabase
+    .from('automations')
+    .upsert(
+      { user_id: userId, automation_type: '_daily_check', enabled: false, config: { lastRun: today } },
+      { onConflict: 'user_id,automation_type' },
+    )
 
   try {
+    // getUserAutomations returns all rows including _daily_check; isEnabled only checks known types
     const automations = await getUserAutomations(userId)
 
     await Promise.all([
-      isEnabled(automations, 'deal_stale_alert')   && checkStaleDeals(userId),
-      isEnabled(automations, 'task_overdue_alert')  && checkOverdueTasks(userId),
-      isEnabled(automations, 'deal_auto_archive')   && checkAutoArchive(),
+      isEnabled(automations, 'deal_stale_alert')  && checkStaleDeals(userId),
+      isEnabled(automations, 'task_overdue_alert') && checkOverdueTasks(userId),
+      isEnabled(automations, 'deal_auto_archive')  && checkAutoArchive(),
     ])
   } catch {
     // Silently fail - daily checks are non-critical
