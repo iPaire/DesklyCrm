@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
-import { getInviteByToken, acceptInvite } from '../lib/billing'
+import {
+  getInviteByToken,
+  acceptInvite,
+  getUserActiveMembership,
+  removeMember,
+} from '../lib/billing'
 
 type Step = 'loading' | 'info' | 'auth' | 'accepting' | 'done' | 'error'
 
@@ -12,15 +17,24 @@ export default function Invite() {
   const user = useAuthStore((s) => s.user)
 
   const [step, setStep] = useState<Step>('loading')
-  const [invite, setInvite] = useState<{ email: string; teams: { name: string | null; owner_email: string | null } | null } | null>(null)
+  const [invite, setInvite] = useState<{
+    id: string
+    email: string
+    team_id: string
+    expires_at: string | null
+    teams: { name: string | null; owner_email: string | null } | null
+  } | null>(null)
   const [errorMsg, setErrorMsg] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [isSignUp, setIsSignUp] = useState(true)
   const [authLoading, setAuthLoading] = useState(false)
+  // For users already in a different team
+  const [existingMembershipId, setExistingMembershipId] = useState<string | null>(null)
+  const [sameTeamAlready, setSameTeamAlready] = useState(false)
 
-  // Load invite info
+  // Load and validate invite
   useEffect(() => {
     if (!token) { setStep('error'); setErrorMsg('Invalid invitation link.'); return }
 
@@ -35,14 +49,32 @@ export default function Invite() {
         setErrorMsg('This invitation has already been accepted.')
         return
       }
+      // Expiry check
+      if (inv.expires_at && new Date(inv.expires_at) < new Date()) {
+        setStep('error')
+        setErrorMsg('This invitation has expired. Ask the team owner to send a new one.')
+        return
+      }
       setInvite(inv)
       setEmail(inv.email ?? '')
       setStep('info')
     })
   }, [token])
 
-  // If user is already logged in, skip auth and accept directly
-  const handleAccept = async (uid: string) => {
+  // When user is known, check their existing membership
+  useEffect(() => {
+    if (!user || !invite) return
+    getUserActiveMembership(user.id).then((membership) => {
+      if (!membership) return
+      if (membership.team_id === invite.team_id) {
+        setSameTeamAlready(true)
+      } else {
+        setExistingMembershipId(membership.id)
+      }
+    })
+  }, [user, invite])
+
+  const doAccept = async (uid: string) => {
     if (!token) return
     setStep('accepting')
     const { error } = await acceptInvite(token, uid)
@@ -55,9 +87,17 @@ export default function Invite() {
     setTimeout(() => navigate('/dashboard'), 2000)
   }
 
-  const handleProceed = () => {
+  const handleProceed = async () => {
     if (user) {
-      handleAccept(user.id)
+      if (sameTeamAlready) {
+        navigate('/dashboard')
+        return
+      }
+      // If in a different team, remove from old team first, then accept
+      if (existingMembershipId) {
+        await removeMember(existingMembershipId)
+      }
+      doAccept(user.id)
     } else {
       setStep('auth')
     }
@@ -72,11 +112,22 @@ export default function Invite() {
       if (password !== confirm) { setErrorMsg('Passwords do not match.'); setAuthLoading(false); return }
       const { data, error } = await supabase.auth.signUp({ email, password })
       if (error) { setErrorMsg(error.message); setAuthLoading(false); return }
-      if (data.user) await handleAccept(data.user.id)
+      if (data.user) await doAccept(data.user.id)
     } else {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) { setErrorMsg(error.message); setAuthLoading(false); return }
-      if (data.user) await handleAccept(data.user.id)
+      if (data.user) {
+        // Check membership for newly signed-in user
+        const membership = await getUserActiveMembership(data.user.id)
+        if (membership) {
+          if (membership.team_id === invite?.team_id) {
+            navigate('/dashboard')
+            return
+          }
+          await removeMember(membership.id)
+        }
+        await doAccept(data.user.id)
+      }
     }
     setAuthLoading(false)
   }
@@ -173,25 +224,57 @@ export default function Invite() {
               <p className="text-sm text-gray-600 dark:text-gray-400 mb-5 text-center">
                 Invitation sent to <span className="font-medium text-gray-900 dark:text-white">{invite?.email}</span>
               </p>
-              {user ? (
-                <div className="space-y-3">
-                  <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-                    You're signed in as <span className="font-medium">{user.email}</span>
+
+              {/* Already in same team */}
+              {sameTeamAlready && (
+                <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl text-center">
+                  <p className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">
+                    You're already a member of this team!
                   </p>
                   <button
-                    onClick={handleProceed}
-                    className="w-full py-2.5 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white font-semibold rounded-xl transition-all"
+                    onClick={() => navigate('/dashboard')}
+                    className="mt-3 w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl transition-all text-sm"
                   >
-                    Accept Invitation →
+                    Go to dashboard →
                   </button>
                 </div>
-              ) : (
-                <button
-                  onClick={handleProceed}
-                  className="w-full py-2.5 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white font-semibold rounded-xl transition-all"
-                >
-                  Accept Invitation →
-                </button>
+              )}
+
+              {/* In a different team - warn */}
+              {!sameTeamAlready && existingMembershipId && user && (
+                <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl">
+                  <p className="text-sm text-amber-700 dark:text-amber-300 font-medium mb-1">
+                    You're currently in another team
+                  </p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Accepting this invite will remove you from your current team.
+                  </p>
+                </div>
+              )}
+
+              {!sameTeamAlready && (
+                <>
+                  {user ? (
+                    <div className="space-y-3">
+                      <p className="text-xs text-center text-gray-500 dark:text-gray-400">
+                        Signed in as <span className="font-medium">{user.email}</span>
+                      </p>
+                      <button
+                        onClick={handleProceed}
+                        className="w-full py-2.5 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white font-semibold rounded-xl transition-all"
+                      >
+                        {existingMembershipId ? 'Switch team & accept →' : 'Accept Invitation →'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleProceed}
+                      className="w-full py-2.5 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white font-semibold rounded-xl transition-all"
+                    >
+                      Accept Invitation →
+                    </button>
+                  )}
+                </>
               )}
             </>
           )}

@@ -17,11 +17,15 @@ import {
 type ToastState = { message: string; type: 'success' | 'error' } | null
 type SortBy = 'name' | 'created_at'
 type SortDir = 'asc' | 'desc'
-type GroupBy = 'none' | 'month' | 'week' | 'quarter'
+type GroupBy = 'none' | 'month' | 'week' | 'company'
 
 // ── Group label helper ────────────────────────────────────────────────────────
 
-function getGroupLabel(dateStr: string, groupBy: GroupBy): string {
+function getGroupLabel(dateStr: string, groupBy: GroupBy, company?: string | null): string {
+  if (groupBy === 'company') {
+    const name = company?.trim()
+    return name ? name[0].toUpperCase() + name.slice(1) : '- No Company'
+  }
   const date = new Date(dateStr)
   if (groupBy === 'month') {
     return date.toLocaleString('default', { month: 'long', year: 'numeric' })
@@ -37,10 +41,6 @@ function getGroupLabel(dateStr: string, groupBy: GroupBy): string {
         ((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7,
       )
     return `Week ${weekNum}, ${d.getFullYear()}`
-  }
-  if (groupBy === 'quarter') {
-    const q = Math.floor(date.getMonth() / 3) + 1
-    return `Q${q} ${date.getFullYear()}`
   }
   return ''
 }
@@ -279,9 +279,9 @@ export default function Contacts() {
   const thumbDragRef = useRef({ active: false, startX: 0, startScrollLeft: 0 })
   const dragScrollRef = useRef({ active: false, startX: 0, scrollLeft: 0, moved: false })
 
-  // Load column defs from localStorage
+  // Load column defs from Supabase
   useEffect(() => {
-    if (user) setCustomColumns(getColumnDefs(user.id))
+    if (user) getColumnDefs(user.id).then(setCustomColumns)
   }, [user])
 
   useEffect(() => {
@@ -342,11 +342,19 @@ export default function Contacts() {
     if (groupBy === 'none') return [{ label: '', contacts: filtered }]
     const map = new Map<string, Contact[]>()
     for (const c of filtered) {
-      const label = getGroupLabel(c.created_at, groupBy)
+      const label = getGroupLabel(c.created_at, groupBy, c.company)
       if (!map.has(label)) map.set(label, [])
       map.get(label)!.push(c)
     }
-    return Array.from(map.entries()).map(([label, contacts]) => ({ label, contacts }))
+    const entries = Array.from(map.entries()).map(([label, contacts]) => ({ label, contacts }))
+    if (groupBy === 'company') {
+      entries.sort((a, b) => {
+        if (a.label === '- No Company') return 1
+        if (b.label === '- No Company') return -1
+        return a.label.localeCompare(b.label)
+      })
+    }
+    return entries
   }, [filtered, groupBy])
 
   // Sort toggle
@@ -684,7 +692,7 @@ export default function Contacts() {
           {/* Group by */}
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Group:</span>
-            {(['none', 'month', 'week', 'quarter'] as GroupBy[]).map((g) => (
+            {(['none', 'month', 'week', 'company'] as GroupBy[]).map((g) => (
               <button
                 key={g}
                 onClick={() => setGroupBy(g)}

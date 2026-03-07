@@ -3,7 +3,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 import { useBillingStore, selectIsSubscribed } from '../store/billingStore'
-import { inviteMember, removeMember, startStripeCheckout } from '../lib/billing'
+import {
+  inviteMember,
+  removeMember,
+  resendInvite,
+  cancelInvite,
+  sendInviteEmail,
+  startStripeCheckout,
+} from '../lib/billing'
 import { Toast } from '../components/Toast'
 import { GmailSettingsPanel } from '../components/GmailSettingsPanel'
 import { AutomationsPanel } from '../components/AutomationsPanel'
@@ -15,7 +22,7 @@ import {
   generateKey,
 } from '../lib/contactColumns'
 
-// ─── CSV parser ────────────────────────────────────────────────────────────────
+// ─── CSV parser (unchanged) ────────────────────────────────────────────────────
 
 function parseCSVLine(line: string): string[] {
   const result: string[] = []
@@ -73,29 +80,152 @@ function autoDetect(headers: string[]): Record<string, string> {
   return mapping
 }
 
-// ─── Shared section card ──────────────────────────────────────────────────────
+// ─── Premium Section Card (redesigned) ─────────────────────────────────────────
 
 function SectionCard({
-  icon, title, children,
+  icon,
+  title,
+  children,
+  className = '',
 }: {
   icon: React.ReactNode
   title: string
   children: React.ReactNode
+  className?: string
 }) {
   return (
-    <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-      <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-100 dark:border-gray-800">
-        <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 dark:text-gray-400">
+    <div className={`bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden ${className}`}>
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 dark:border-gray-800 bg-gradient-to-r from-gray-50/50 to-white dark:from-gray-900/50 dark:to-gray-900">
+        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary-100 to-primary-50 dark:from-primary-900/30 dark:to-primary-800/20 flex items-center justify-center text-primary-600 dark:text-primary-400 shadow-sm">
           {icon}
         </div>
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">{title}</h2>
+        <h2 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h2>
       </div>
-      <div className="p-5">{children}</div>
+      <div className="p-6">{children}</div>
     </div>
   )
 }
 
-// ─── Import section ───────────────────────────────────────────────────────────
+// ─── Helper: Feature list with check icons ────────────────────────────────────
+
+const FeatureList = ({ features }: { features: string[] }) => (
+  <ul className="space-y-2 mt-4">
+    {features.map(f => (
+      <li key={f} className="flex items-center gap-3 text-sm text-gray-700 dark:text-gray-200">
+        <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+          </svg>
+        </span>
+        {f}
+      </li>
+    ))}
+  </ul>
+)
+
+// ─── Helper: Member Row (redesigned) ──────────────────────────────────────────
+
+const MemberRow = ({
+  member,
+  isCurrentUser,
+  onRemove,
+  onResend,
+  onCancel,
+  isRemoving,
+  isResending,
+}: {
+  member: any
+  isCurrentUser: boolean
+  onRemove: () => void
+  onResend: () => void
+  onCancel: () => void
+  isRemoving: boolean
+  isResending: boolean
+}) => {
+  const isOwner = member.role === 'owner'
+  const isPending = member.status === 'pending'
+  const initial = member.email[0].toUpperCase()
+  const statusColor = member.status === 'active'
+    ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+    : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+
+  return (
+    <div className="flex items-center gap-4 p-3 bg-gray-50/80 dark:bg-gray-800/50 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group">
+      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 dark:from-primary-600 dark:to-primary-800 flex items-center justify-center text-white text-sm font-bold shadow-sm shrink-0">
+        {initial}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{member.email}</p>
+          {isCurrentUser && (
+            <span className="text-xs text-gray-400 dark:text-gray-500">(you)</span>
+          )}
+        </div>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className="text-xs text-gray-500 dark:text-gray-400 capitalize">{isOwner ? 'Owner' : 'Member'}</span>
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusColor}`}>
+            {member.status === 'active' ? 'Active' : 'Pending'}
+          </span>
+        </div>
+      </div>
+      {!isOwner && (
+        <div className="flex items-center gap-1 shrink-0">
+          {isPending && (
+            <button
+              onClick={onResend}
+              disabled={isResending}
+              className="p-2 text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 transition-colors disabled:opacity-40"
+              title="Resend invite"
+            >
+              {isResending ? (
+                <span className="block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
+            </button>
+          )}
+          <button
+            onClick={isPending ? onCancel : onRemove}
+            disabled={isRemoving}
+            className="p-2 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors disabled:opacity-40"
+            title={isPending ? 'Cancel invite' : 'Remove member'}
+          >
+            {isRemoving ? (
+              <span className="block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            )}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Progress Bar (for trial) ─────────────────────────────────────────────────
+
+const ProgressBar = ({ value, status }: { value: number; status: 'expired' | 'warning' | 'normal' }) => {
+  const colorClass = {
+    expired: 'from-red-400 to-red-500',
+    warning: 'from-orange-400 to-amber-500',
+    normal: 'from-primary-400 to-violet-500',
+  }[status]
+
+  return (
+    <div className="h-2.5 bg-white/60 dark:bg-gray-900/40 rounded-full overflow-hidden">
+      <div
+        className={`h-full rounded-full bg-gradient-to-r ${colorClass} transition-all duration-500`}
+        style={{ width: `${value}%` }}
+      />
+    </div>
+  )
+}
+
+// ─── Import Contacts Panel (redesigned UI, logic untouched) ───────────────────
 
 const IMPORT_FIELDS: { key: string; label: string; required?: boolean }[] = [
   { key: 'name',    label: 'Name',    required: true },
@@ -108,8 +238,8 @@ const IMPORT_FIELDS: { key: string; label: string; required?: boolean }[] = [
 type ImportStatus = 'idle' | 'importing' | 'done'
 
 interface CustomImportField {
-  csvCol: string   // CSV column header
-  label: string    // display / column def label
+  csvCol: string
+  label: string
   enabled: boolean
 }
 
@@ -125,7 +255,6 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
   const [count,   setCount]   = useState(0)
   const [error,   setError]   = useState('')
 
-  // How many custom fields are currently enabled
   const enabledCustomCount = useMemo(
     () => customFields.filter(f => f.enabled).length,
     [customFields],
@@ -141,7 +270,6 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
       if (csv.headers.length === 0) { setError('Could not parse CSV - check the file format.'); return }
       const detected = autoDetect(csv.headers)
       const usedCols = new Set(Object.values(detected))
-      // Extra columns not auto-mapped to standard fields
       const extras: CustomImportField[] = csv.headers
         .filter(h => !usedCols.has(h))
         .map(h => ({ csvCol: h, label: h, enabled: false }))
@@ -163,7 +291,6 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
   const toggleCustomField = (csvCol: string) => {
     setCustomFields(prev => prev.map(f => {
       if (f.csvCol !== csvCol) return f
-      // Can only enable up to MAX_CUSTOM_COLS
       if (!f.enabled && enabledCustomCount >= MAX_CUSTOM_COLS) return f
       return { ...f, enabled: !f.enabled }
     }))
@@ -207,9 +334,8 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
       imported += Math.min(CHUNK, records.length - i)
     }
 
-    // Auto-update column defs in localStorage so custom columns appear in the table
     if (enabledExtra.length > 0) {
-      const existingDefs = getColumnDefs(user.id)
+      const existingDefs = await getColumnDefs(user.id)
       const existingKeys = existingDefs.map(d => d.key)
       let updatedDefs = [...existingDefs]
       for (const cf of enabledExtra) {
@@ -219,7 +345,7 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
           updatedDefs.push({ key, label: cf.label })
         }
       }
-      saveColumnDefs(user.id, updatedDefs)
+      await saveColumnDefs(user.id, updatedDefs)
     }
 
     setCount(imported)
@@ -234,27 +360,25 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
     setStatus('idle'); setCount(0); setError('')
   }
 
-  // ── Done state ──
   if (status === 'done') {
     return (
-      <div className="flex flex-col items-center py-6 text-center">
-        <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-950 rounded-full flex items-center justify-center mb-3">
-          <svg className="w-6 h-6 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="flex flex-col items-center py-8 text-center">
+        <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-950 rounded-full flex items-center justify-center mb-4">
+          <svg className="w-8 h-8 text-emerald-600 dark:text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <p className="text-sm font-semibold text-gray-900 dark:text-white">
+        <p className="text-base font-semibold text-gray-900 dark:text-white">
           {count} contact{count !== 1 ? 's' : ''} imported
         </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">You can find them in the Contacts page.</p>
-        <button onClick={reset} className="mt-4 text-xs text-primary-600 dark:text-primary-400 hover:underline font-medium">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">You can find them in the Contacts page.</p>
+        <button onClick={reset} className="mt-4 text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium">
           Import another file
         </button>
       </div>
     )
   }
 
-  // ── Preview + mapping ──
   if (parsed) {
     const preview = parsed.rows.slice(0, 3)
     const hasName = !!mapping.name
@@ -265,14 +389,13 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
     ]
 
     return (
-      <div className="space-y-4">
-        {/* File banner */}
-        <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-xl">
+      <div className="space-y-6">
+        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
           <div className="flex items-center gap-2">
-            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{file?.name}</span>
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{file?.name}</span>
             <span className="text-xs text-gray-400 dark:text-gray-500">
               · {parsed.rows.length} row{parsed.rows.length !== 1 ? 's' : ''}
             </span>
@@ -282,15 +405,12 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
           </button>
         </div>
 
-        {/* Standard column mapping */}
         <div>
-          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
-            Standard fields
-          </p>
-          <div className="space-y-1.5">
+          <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Standard fields</h4>
+          <div className="space-y-3">
             {IMPORT_FIELDS.map(f => (
               <div key={f.key} className="flex items-center gap-3">
-                <span className="w-20 text-xs text-gray-600 dark:text-gray-400 shrink-0">
+                <span className="w-20 text-sm text-gray-600 dark:text-gray-400 shrink-0">
                   {f.label}
                   {f.required && <span className="text-red-500 ml-0.5">*</span>}
                 </span>
@@ -299,7 +419,6 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
                   onChange={e => {
                     const newVal = e.target.value
                     setMapping(prev => ({ ...prev, [f.key]: newVal }))
-                    // Update customFields: remove newly mapped col, add back old one
                     setCustomFields(prev => {
                       const oldVal = mapping[f.key]
                       let next = prev.filter(cf => cf.csvCol !== newVal)
@@ -309,7 +428,7 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
                       return next
                     })
                   }}
-                  className="flex-1 px-2.5 py-1.5 text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
+                  className="flex-1 px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
                 >
                   <option value="">- skip -</option>
                   {parsed.headers.map(h => (
@@ -317,7 +436,7 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
                   ))}
                 </select>
                 {mapping[f.key] && (
-                  <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                   </svg>
                 )}
@@ -326,28 +445,27 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
           </div>
         </div>
 
-        {/* Extra columns → custom fields */}
         {customFields.length > 0 && (
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                 Extra columns → custom fields
-              </p>
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">
+              </h4>
+              <span className="text-xs text-gray-400 dark:text-gray-500">
                 {enabledCustomCount}/{MAX_CUSTOM_COLS} selected
               </span>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-3">
               {customFields.map(cf => (
-                <div key={cf.csvCol} className="flex items-center gap-2">
+                <div key={cf.csvCol} className="flex items-center gap-3">
                   <input
                     type="checkbox"
                     checked={cf.enabled}
                     onChange={() => toggleCustomField(cf.csvCol)}
                     disabled={!cf.enabled && enabledCustomCount >= MAX_CUSTOM_COLS}
-                    className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 focus:ring-offset-0 cursor-pointer disabled:opacity-40"
+                    className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 cursor-pointer disabled:opacity-40"
                   />
-                  <span className="text-xs text-gray-500 dark:text-gray-400 w-24 shrink-0 truncate" title={cf.csvCol}>
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-24 shrink-0 truncate" title={cf.csvCol}>
                     {cf.csvCol}
                   </span>
                   {cf.enabled ? (
@@ -356,10 +474,10 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
                       value={cf.label}
                       onChange={e => updateCustomLabel(cf.csvCol, e.target.value)}
                       placeholder="Column label"
-                      className="flex-1 px-2 py-1 text-xs border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-primary-500 transition-colors"
+                      className="flex-1 px-3 py-2 text-sm border border-gray-300 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-primary-500"
                     />
                   ) : (
-                    <span className="flex-1 text-xs text-gray-400 dark:text-gray-600 italic">
+                    <span className="flex-1 text-sm text-gray-400 dark:text-gray-600 italic">
                       {enabledCustomCount >= MAX_CUSTOM_COLS ? 'limit reached' : 'not imported'}
                     </span>
                   )}
@@ -369,19 +487,18 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
           </div>
         )}
 
-        {/* Preview rows */}
         {preview.length > 0 && mapping.name && (
           <div>
-            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
               Preview ({Math.min(3, parsed.rows.length)} of {parsed.rows.length})
-            </p>
+            </h4>
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-xs">
+                <table className="w-full text-sm">
                   <thead className="bg-gray-50 dark:bg-gray-800">
                     <tr>
                       {previewCols.map(f => (
-                        <th key={f.key} className="text-left px-3 py-2 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                        <th key={f.key} className="text-left px-4 py-2 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">
                           {f.label}
                         </th>
                       ))}
@@ -391,12 +508,12 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
                     {preview.map((row, i) => (
                       <tr key={i}>
                         {IMPORT_FIELDS.filter(f => mapping[f.key]).map(f => (
-                          <td key={f.key} className="px-3 py-2 text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
+                          <td key={f.key} className="px-4 py-2 text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
                             {row[mapping[f.key]] || <span className="text-gray-300 dark:text-gray-600">-</span>}
                           </td>
                         ))}
                         {customFields.filter(f => f.enabled).map(cf => (
-                          <td key={cf.csvCol} className="px-3 py-2 text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
+                          <td key={cf.csvCol} className="px-4 py-2 text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
                             {row[cf.csvCol] || <span className="text-gray-300 dark:text-gray-600">-</span>}
                           </td>
                         ))}
@@ -409,14 +526,12 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
           </div>
         )}
 
-        {error && (
-          <p className="text-xs text-red-500 dark:text-red-400">{error}</p>
-        )}
+        {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
 
         <button
           onClick={runImport}
           disabled={!hasName || status === 'importing'}
-          className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          className="w-full py-3 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white text-sm font-semibold rounded-xl transition-all shadow-sm hover:shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
         >
           {status === 'importing' && (
             <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -429,20 +544,18 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
     )
   }
 
-  // ── Drop zone ──
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-gray-500 dark:text-gray-400">
-        Upload a CSV exported from HubSpot, Salesforce, Pipedrive, or any CRM.
-        We'll auto-detect standard fields and let you import all other columns too.
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        Upload a CSV exported from HubSpot, Salesforce, Pipedrive, or any CRM. We'll auto-detect standard fields and let you import all other columns too.
       </p>
 
       <label
         className={`
-          flex flex-col items-center justify-center gap-2 w-full h-32 rounded-xl
-          border-2 border-dashed cursor-pointer transition-all duration-150
+          flex flex-col items-center justify-center gap-3 w-full h-40 rounded-xl
+          border-2 border-dashed cursor-pointer transition-all duration-200
           ${dragging
-            ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/30 scale-[1.01]'
+            ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/30 scale-[1.02]'
             : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50'
           }
         `}
@@ -455,30 +568,28 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
           className="sr-only"
           onChange={e => { if (e.target.files?.[0]) load(e.target.files[0]) }}
         />
-        <svg className={`w-8 h-8 transition-colors ${dragging ? 'text-primary-500' : 'text-gray-300 dark:text-gray-600'}`}
+        <svg className={`w-10 h-10 transition-colors ${dragging ? 'text-primary-500' : 'text-gray-300 dark:text-gray-600'}`}
           fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
             d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
         </svg>
         <div className="text-center">
-          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            Drop your CSV here, or{' '}
-            <span className="text-primary-600 dark:text-primary-400">browse</span>
+          <p className="text-base font-medium text-gray-700 dark:text-gray-300">
+            Drop your CSV here, or <span className="text-primary-600 dark:text-primary-400">browse</span>
           </p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Contacts CSV - max 10,000 rows</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Contacts CSV - max 10,000 rows</p>
         </div>
       </label>
 
-      {error && <p className="text-xs text-red-500 dark:text-red-400">{error}</p>}
+      {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
 
-      {/* Format hints */}
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-3">
         {['HubSpot', 'Salesforce', 'Pipedrive'].map(crm => (
-          <div key={crm} className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <svg className="w-3 h-3 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div key={crm} className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+            <svg className="w-4 h-4 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
             </svg>
-            <span className="text-xs text-gray-600 dark:text-gray-400">{crm}</span>
+            <span className="text-sm text-gray-600 dark:text-gray-400">{crm}</span>
           </div>
         ))}
       </div>
@@ -486,30 +597,30 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
   )
 }
 
-// ─── Main Settings page ────────────────────────────────────────────────────────
+// ─── Main Settings Page ────────────────────────────────────────────────────────
 
 export default function Settings() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const user    = useAuthStore(s => s.user)
   const signOut = useAuthStore(s => s.signOut)
-  const { team, members, trialInfo, fetchBilling, setMembers } = useBillingStore()
+  const { team, members, trialInfo, isOwner, fetchBilling, setMembers } = useBillingStore()
   const subscribed = useBillingStore(selectIsSubscribed)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [upgradeLoading, setUpgradeLoading] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteLoading, setInviteLoading] = useState(false)
   const [removingId, setRemovingId] = useState<string | null>(null)
+  const [resendingId, setResendingId] = useState<string | null>(null)
+  const [confirmRemoveMember, setConfirmRemoveMember] = useState<{ id: string; email: string } | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [deleteLoading, setDeleteLoading] = useState(false)
 
-  // Load billing data
   useEffect(() => {
     if (user) fetchBilling(user.id)
   }, [user, fetchBilling])
 
-  // Handle redirects
   useEffect(() => {
     if (searchParams.get('gmail') === 'connected') {
       setToast({ message: 'Gmail connected! Click "Sync Now" to import emails.', type: 'success' })
@@ -546,7 +657,7 @@ export default function Settings() {
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!team) return
+    if (!team || !user) return
     setInviteLoading(true)
     const { member, error } = await inviteMember(team.id, inviteEmail)
     if (error) {
@@ -554,17 +665,67 @@ export default function Settings() {
     } else if (member) {
       setMembers([...members, member])
       setInviteEmail('')
-      setToast({
-        message: `Invite sent to ${member.email} - share the link: ${window.location.origin}/invite/${member.invite_token}`,
-        type: 'success',
+      // Send invite email; fall back to showing the link if email fails
+      const { error: emailError } = await sendInviteEmail({
+        email: member.email,
+        inviteToken: member.invite_token,
+        inviterEmail: user.email ?? '',
+        teamName: team.name,
       })
+      if (emailError) {
+        setToast({
+          message: `Invite created - email delivery failed. Share this link: ${window.location.origin}/invite/${member.invite_token}`,
+          type: 'error',
+        })
+      } else {
+        setToast({ message: `Invite email sent to ${member.email}`, type: 'success' })
+      }
     }
     setInviteLoading(false)
   }
 
   const handleRemoveMember = async (memberId: string) => {
+    setConfirmRemoveMember(null)
     setRemovingId(memberId)
     const { error } = await removeMember(memberId)
+    if (error) {
+      setToast({ message: error.message, type: 'error' })
+    } else {
+      setMembers(members.filter(m => m.id !== memberId))
+      setToast({ message: 'Member removed.', type: 'success' })
+    }
+    setRemovingId(null)
+  }
+
+  const handleResendInvite = async (memberId: string, email: string) => {
+    if (!team || !user) return
+    setResendingId(memberId)
+    const { member, error } = await resendInvite(memberId)
+    if (error) {
+      setToast({ message: error.message, type: 'error' })
+    } else if (member) {
+      setMembers(members.map(m => m.id === memberId ? member : m))
+      const { error: emailError } = await sendInviteEmail({
+        email,
+        inviteToken: member.invite_token,
+        inviterEmail: user.email ?? '',
+        teamName: team.name,
+      })
+      if (emailError) {
+        setToast({
+          message: `Invite link reset - email failed. Share: ${window.location.origin}/invite/${member.invite_token}`,
+          type: 'error',
+        })
+      } else {
+        setToast({ message: `Invite resent to ${email}`, type: 'success' })
+      }
+    }
+    setResendingId(null)
+  }
+
+  const handleCancelInvite = async (memberId: string) => {
+    setRemovingId(memberId)
+    const { error } = await cancelInvite(memberId)
     if (error) {
       setToast({ message: error.message, type: 'error' })
     } else {
@@ -602,437 +763,495 @@ export default function Settings() {
     }
   }
 
+  // Determine progress bar status for trial
+  const trialStatus = trialInfo?.isExpired
+    ? 'expired'
+    : trialInfo?.daysRemaining && trialInfo.daysRemaining <= 3
+      ? 'warning'
+      : 'normal'
+
   return (
-    <div className="p-6 lg:p-8 max-w-2xl mx-auto space-y-5">
-
-      {/* Page heading */}
-      <div className="mb-2">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Settings</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          Manage your account, billing, and data.
-        </p>
-      </div>
-
-      {/* ── Account ── */}
-      <SectionCard
-        title="Account"
-        icon={
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-          </svg>
-        }
-      >
-        {/* User info */}
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-11 h-11 rounded-full bg-primary-100 dark:bg-primary-950 flex items-center justify-center shrink-0">
-            <span className="text-primary-700 dark:text-primary-300 text-base font-bold">{initials}</span>
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{user?.email}</p>
-            {subscribed ? (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-full mt-0.5">
-                Pro
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950 px-2 py-0.5 rounded-full mt-0.5">
-                Free Trial {trialInfo ? `· ${trialInfo.daysRemaining}d left` : ''}
-              </span>
-            )}
-          </div>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Page header with subtle glow */}
+        <div className="relative mb-2">
+          <div className="absolute inset-0 -z-10 bg-gradient-to-r from-primary-500/10 via-transparent to-violet-500/10 blur-3xl" />
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Settings</h1>
+          <p className="text-base text-gray-500 dark:text-gray-400 mt-1">
+            Manage your account, billing, and data.
+          </p>
         </div>
 
-        <div className="space-y-2">
-          {/* Change password */}
-          <button
-            onClick={() => alert('Coming soon - password change will be available in a future update.')}
-            className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700/60 rounded-xl transition-colors group"
-          >
-            <div className="flex items-center gap-3">
-              <svg className="w-4 h-4 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Change Password</span>
-            </div>
-            <svg className="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:text-gray-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-
-          {/* Sign out */}
-          <button
-            onClick={handleSignOut}
-            className="w-full flex items-center gap-3 px-4 py-3 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 text-red-600 dark:text-red-400 rounded-xl transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        {/* Account */}
+        <SectionCard
+          title="Account"
+          icon={
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
-            <span className="text-sm font-semibold">Sign Out</span>
-          </button>
-        </div>
-      </SectionCard>
-
-      {/* ── Billing ── */}
-      <SectionCard
-        title="Billing"
-        icon={
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-          </svg>
-        }
-      >
-        {subscribed ? (
-          /* ── Pro plan ── */
-          <div className="rounded-xl bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/40 dark:to-teal-950/30 border border-emerald-100 dark:border-emerald-900/50 p-4 mb-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide">Current Plan</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white mt-0.5">Deskly Pro</p>
-              </div>
-              <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-2.5 py-1 rounded-full">
-                Active
-              </span>
+          }
+        >
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white text-xl font-bold shadow-md">
+              {initials}
             </div>
-            <p className="text-sm text-gray-600 dark:text-gray-300">
-              {team?.seats ?? 1} seat{(team?.seats ?? 1) > 1 ? 's' : ''} · ${(team?.seats ?? 1) * 10}/month
-            </p>
-            <ul className="mt-3 space-y-1">
-              {['Unlimited contacts', 'Kanban deal pipeline', 'Task management', 'Team collaboration', 'Gmail sync & automations'].map(f => (
-                <li key={f} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-                  <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
-                  {f}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : (
-          /* ── Trial / upgrade ── */
-          <div className="rounded-xl bg-gradient-to-br from-primary-50 to-violet-50 dark:from-primary-950/40 dark:to-violet-950/30 border border-primary-100 dark:border-primary-900/50 p-4 mb-4">
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <p className="text-xs font-semibold text-primary-600 dark:text-primary-400 uppercase tracking-wide">Current Plan</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white mt-0.5">Free Trial</p>
-              </div>
-              {trialInfo && (
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                  trialInfo.isExpired
-                    ? 'text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-950/60'
-                    : trialInfo.daysRemaining <= 3
-                      ? 'text-orange-700 dark:text-orange-300 bg-orange-100 dark:bg-orange-950/60'
-                      : 'text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60'
-                }`}>
-                  {trialInfo.isExpired ? 'Expired' : `${trialInfo.daysRemaining} day${trialInfo.daysRemaining !== 1 ? 's' : ''} left`}
+            <div>
+              <p className="text-base font-semibold text-gray-900 dark:text-white">{user?.email}</p>
+              {subscribed ? (
+                <span className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-3 py-1 rounded-full mt-1">
+                  Pro
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-sm font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-3 py-1 rounded-full mt-1">
+                  Free Trial {trialInfo ? `· ${trialInfo.daysRemaining}d left` : ''}
                 </span>
               )}
             </div>
-
-            {trialInfo && (
-              <div className="mb-3">
-                <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  <span>Day {trialInfo.daysElapsed} of {trialInfo.totalDays}</span>
-                  <span>{trialInfo.isExpired ? 'Trial ended' : 'Trial active'}</span>
-                </div>
-                <div className="h-1.5 bg-white/60 dark:bg-gray-900/40 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${trialInfo.isExpired ? 'bg-red-500' : 'bg-primary-500'}`}
-                    style={{ width: `${trialInfo.progress}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
-            <ul className="space-y-1">
-              {['Unlimited contacts', 'Kanban deal pipeline', 'Task management', 'Gmail sync & automations'].map(f => (
-                <li key={f} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-                  <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
-                  {f}
-                </li>
-              ))}
-            </ul>
           </div>
-        )}
 
-        {!subscribed && (
-          <button
-            onClick={handleUpgrade}
-            disabled={upgradeLoading}
-            className="w-full py-2.5 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white text-sm font-semibold rounded-xl transition-all shadow-sm hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
-          >
-            {upgradeLoading && (
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            )}
-            {upgradeLoading ? 'Redirecting…' : 'Upgrade to Pro - $10/user/month →'}
-          </button>
-        )}
-      </SectionCard>
-
-      {/* ── Team ── */}
-      <SectionCard
-        title="Team"
-        icon={
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M17 20h5v-2a4 4 0 00-5-3.87M9 20H4v-2a4 4 0 015-3.87m6-4a4 4 0 11-8 0 4 4 0 018 0zm6 4a2 2 0 100-4 2 2 0 000 4zM3 20a2 2 0 100-4 2 2 0 000 4z" />
-          </svg>
-        }
-      >
-        {/* Member list */}
-        <div className="space-y-2 mb-4">
-          {members.map(m => {
-            const isOwner = m.role === 'owner'
-            const memberInitial = m.email[0].toUpperCase()
-            return (
-              <div key={m.id} className="flex items-center gap-3 px-3 py-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                <div className="w-8 h-8 rounded-full bg-primary-100 dark:bg-primary-950 flex items-center justify-center shrink-0">
-                  <span className="text-primary-700 dark:text-primary-300 text-xs font-bold">{memberInitial}</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{m.email}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">{isOwner ? 'Owner' : 'Member'}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {m.status === 'pending' ? (
-                    <span className="text-xs font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-full">
-                      Pending
-                    </span>
-                  ) : (
-                    <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full">
-                      Active
-                    </span>
-                  )}
-                  {!isOwner && (
-                    <button
-                      onClick={() => handleRemoveMember(m.id)}
-                      disabled={removingId === m.id}
-                      className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors disabled:opacity-40"
-                      title="Remove member"
-                    >
-                      {removingId === m.id ? (
-                        <span className="w-3.5 h-3.5 border border-current border-t-transparent rounded-full animate-spin inline-block" />
-                      ) : (
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      )}
-                    </button>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Pricing hint */}
-        {subscribed && team && (
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3 text-center">
-            {members.filter(m => m.status === 'active').length} active seat{members.filter(m => m.status === 'active').length !== 1 ? 's' : ''} · $10/seat/month
-          </p>
-        )}
-
-        {/* Invite form */}
-        <form onSubmit={handleInvite} className="flex gap-2">
-          <input
-            type="email"
-            required
-            value={inviteEmail}
-            onChange={e => setInviteEmail(e.target.value)}
-            placeholder="teammate@example.com"
-            className="flex-1 px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
-          />
-          <button
-            type="submit"
-            disabled={inviteLoading}
-            className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium rounded-xl transition-colors disabled:opacity-60 flex items-center gap-1.5"
-          >
-            {inviteLoading ? (
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            )}
-            Invite
-          </button>
-        </form>
-
-        {/* Invite link explanation */}
-        <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 text-center">
-          An invite link will be shown - share it with your teammate.
-        </p>
-      </SectionCard>
-
-      {/* ── Automations ── */}
-      <SectionCard
-        title="Automations"
-        icon={
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-        }
-      >
-        <div className="mb-5">
-          <p className="text-sm font-semibold text-gray-900 dark:text-white">Pre-built Automations</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Toggle automations on or off. Enabled automations run automatically when triggered.
-          </p>
-        </div>
-        <AutomationsPanel onToast={(m, t) => setToast({ message: m, type: t })} />
-      </SectionCard>
-
-      {/* ── Gmail Integration ── */}
-      <SectionCard
-        title="Gmail Integration"
-        icon={
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-        }
-      >
-        <div className="mb-4">
-          <p className="text-sm font-semibold text-gray-900 dark:text-white">Sync Gmail Emails</p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Automatically sync emails with your CRM contacts and track communication history.
-          </p>
-        </div>
-        <GmailSettingsPanel onToast={(m, t) => setToast({ message: m, type: t })} />
-      </SectionCard>
-
-      {/* ── Import Data ── */}
-      <SectionCard
-        title="Import Data"
-        icon={
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-          </svg>
-        }
-      >
-        <div className="mb-4">
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-sm font-semibold text-gray-900 dark:text-white">Import Contacts</span>
-            <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">CSV</span>
-          </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Migrate your contacts from any CRM in seconds.
-          </p>
-        </div>
-
-        <ImportContactsPanel onToast={(m, t) => setToast({ message: m, type: t })} />
-
-        {/* Import deals - placeholder */}
-        <div className="mt-5 pt-5 border-t border-gray-100 dark:border-gray-800">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Import Deals</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">CSV import for your deal pipeline.</p>
-            </div>
-            <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-2.5 py-1 rounded-lg">
-              Coming soon
-            </span>
-          </div>
-        </div>
-      </SectionCard>
-
-      {/* ── Danger Zone ── */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-red-200 dark:border-red-900/50 overflow-hidden">
-        <div className="flex items-center gap-3 px-5 py-4 border-b border-red-100 dark:border-red-900/40">
-          <div className="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-950/50 flex items-center justify-center text-red-500 dark:text-red-400">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-            </svg>
-          </div>
-          <h2 className="text-sm font-semibold text-red-600 dark:text-red-400">Danger Zone</h2>
-        </div>
-        <div className="p-5">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Delete Account</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                Permanently delete your account and all associated data. This action cannot be undone.
-              </p>
-            </div>
+          <div className="space-y-3">
             <button
-              onClick={() => { setDeleteConfirm(''); setShowDeleteModal(true) }}
-              className="shrink-0 px-4 py-2 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-950/70 text-red-600 dark:text-red-400 text-sm font-semibold rounded-xl border border-red-200 dark:border-red-800 transition-colors"
+              onClick={() => alert('Coming soon - password change will be available in a future update.')}
+              className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors group"
             >
-              Delete Account
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Change Password</span>
+              </div>
+              <svg className="w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-gray-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+
+            <button
+              onClick={handleSignOut}
+              className="w-full flex items-center gap-3 px-4 py-3 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-950/50 text-red-600 dark:text-red-400 rounded-xl transition-colors"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              <span className="text-sm font-semibold">Sign Out</span>
             </button>
           </div>
-        </div>
-      </div>
+        </SectionCard>
 
-      {/* ── Delete Confirmation Modal ── */}
-      {showDeleteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => !deleteLoading && setShowDeleteModal(false)} />
-          <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 w-full max-w-md p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950/50 flex items-center justify-center shrink-0">
-                <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-gray-900 dark:text-white">Delete Account</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400">This is permanent and cannot be reversed.</p>
+        {/* Billing */}
+        <SectionCard
+          title="Billing"
+          icon={
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+            </svg>
+          }
+        >
+          {subscribed ? (
+            <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-white to-gray-50 dark:from-gray-900 dark:to-gray-800/50 border border-gray-200 dark:border-gray-800 p-6 shadow-sm hover:shadow-md transition-all">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-emerald-500/10 to-teal-500/10 rounded-full blur-3xl -mr-20 -mt-20" />
+              <div className="relative">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center text-white shadow-md">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Current Plan</p>
+                      <h3 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        Deskly Pro
+                        <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-3 py-1 rounded-full">
+                          Active
+                        </span>
+                      </h3>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-baseline gap-1">
+                  <span className="text-4xl font-bold text-gray-900 dark:text-white">
+                    ${(team?.seats ?? 1) * 10}
+                  </span>
+                  <span className="text-gray-500 dark:text-gray-400 text-base">/month</span>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">
+                  {team?.seats ?? 1} seat{(team?.seats ?? 1) > 1 ? 's' : ''} · ${10}/user/month
+                </p>
+
+                <FeatureList features={[
+                  'Unlimited contacts',
+                  'Kanban deal pipeline',
+                  'Task management',
+                  'Team collaboration',
+                  'Gmail sync & automations'
+                ]} />
+
+                <div className="mt-6 pt-4 border-t border-gray-100 dark:border-gray-800">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="text-gray-500 dark:text-gray-400">Payment method</span>
+                      <span className="flex items-center gap-1 text-gray-700 dark:text-gray-200">
+                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M22 4H2v16h20V4zm-2 14H4v-6h16v6zm0-10H4V6h16v2z" />
+                        </svg>
+                        Visa •••• 4242
+                      </span>
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => alert('Invoice history coming soon')}
+                        className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium"
+                      >
+                        Invoices
+                      </button>
+                      <button
+                        onClick={() => alert('Manage billing - redirect to Stripe Customer Portal')}
+                        className="text-sm text-primary-600 dark:text-primary-400 hover:underline font-medium"
+                      >
+                        Manage
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+                    Next invoice: {new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} · ~${(team?.seats ?? 1) * 10}
+                  </p>
+                </div>
               </div>
             </div>
+          ) : (
+            <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-primary-50 to-violet-50 dark:from-primary-950/30 dark:to-violet-950/20 border border-primary-100 dark:border-primary-900/50 p-6 shadow-sm hover:shadow-md transition-all">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-primary-500/10 to-violet-500/10 rounded-full blur-3xl -mr-20 -mt-20" />
+              <div className="relative">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary-500 to-violet-500 flex items-center justify-center text-white shadow-md">
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 019.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Current Plan</p>
+                      <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Free Trial</h3>
+                    </div>
+                  </div>
+                </div>
 
-            <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-              All your contacts, deals, tasks, emails, and billing data will be permanently deleted.
-              To confirm, type your email address below:
-            </p>
-
-            <p className="text-xs font-mono font-semibold text-gray-700 dark:text-gray-300 mb-2 select-all">
-              {user?.email}
-            </p>
-
-            <input
-              type="email"
-              value={deleteConfirm}
-              onChange={e => setDeleteConfirm(e.target.value)}
-              placeholder={user?.email ?? 'your@email.com'}
-              className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors mb-4"
-              disabled={deleteLoading}
-            />
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowDeleteModal(false)}
-                disabled={deleteLoading}
-                className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-semibold rounded-xl transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteAccount}
-                disabled={deleteConfirm !== user?.email || deleteLoading}
-                className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
-              >
-                {deleteLoading && (
-                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                {trialInfo && (
+                  <div className="mt-4">
+                    <div className="flex items-end justify-between mb-1">
+                      <span className="text-4xl font-bold text-gray-900 dark:text-white">
+                        {trialInfo.daysRemaining}
+                        <span className="text-lg font-normal text-gray-500 dark:text-gray-400 ml-1">days left</span>
+                      </span>
+                      <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                        Day {trialInfo.daysElapsed} of {trialInfo.totalDays}
+                      </span>
+                    </div>
+                    <ProgressBar value={trialInfo.progress} status={trialStatus} />
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-3">
+                      {trialInfo.isExpired
+                        ? 'Your trial has ended. Upgrade to keep using all features.'
+                        : `Upgrade before your trial ends to keep your data and continue using Deskly Pro.`}
+                    </p>
+                  </div>
                 )}
-                {deleteLoading ? 'Deleting…' : 'Delete Everything'}
+
+                <FeatureList features={[
+                  'Unlimited contacts',
+                  'Kanban deal pipeline',
+                  'Task management',
+                  'Gmail sync & automations'
+                ]} />
+
+                <button
+                  onClick={handleUpgrade}
+                  disabled={upgradeLoading}
+                  className="mt-6 w-full py-3 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white text-sm font-semibold rounded-xl transition-all shadow-sm hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {upgradeLoading && (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  )}
+                  {upgradeLoading ? 'Redirecting…' : 'Upgrade to Pro - $10/user/month →'}
+                </button>
+              </div>
+            </div>
+          )}
+        </SectionCard>
+
+        {/* Team */}
+        <SectionCard
+          title="Team"
+          icon={
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M17 20h5v-2a4 4 0 00-5-3.87M9 20H4v-2a4 4 0 015-3.87m6-4a4 4 0 11-8 0 4 4 0 018 0zm6 4a2 2 0 100-4 2 2 0 000 4zM3 20a2 2 0 100-4 2 2 0 000 4z" />
+            </svg>
+          }
+        >
+          {members.length > 0 && (
+            <div className="space-y-3 mb-6">
+              {members.map(m => (
+                <MemberRow
+                  key={m.id}
+                  member={m}
+                  isCurrentUser={m.user_id === user?.id || m.email === user?.email}
+                  onRemove={() => setConfirmRemoveMember({ id: m.id, email: m.email })}
+                  onResend={() => handleResendInvite(m.id, m.email)}
+                  onCancel={() => handleCancelInvite(m.id)}
+                  isRemoving={removingId === m.id}
+                  isResending={resendingId === m.id}
+                />
+              ))}
+            </div>
+          )}
+
+          {subscribed && team && isOwner && (
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 text-center">
+              {members.filter(m => m.status === 'active').length} active seat{members.filter(m => m.status === 'active').length !== 1 ? 's' : ''} · $10/seat/month
+            </p>
+          )}
+
+          {isOwner && (
+            <>
+              <form onSubmit={handleInvite} className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="email"
+                  required
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  placeholder="teammate@example.com"
+                  className="flex-1 px-4 py-2.5 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors"
+                />
+                <button
+                  type="submit"
+                  disabled={inviteLoading}
+                  className="w-full sm:w-auto px-5 py-2.5 bg-gradient-to-r from-primary-600 to-violet-600 hover:from-primary-700 hover:to-violet-700 text-white text-sm font-medium rounded-xl transition-all shadow-sm hover:shadow-md disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {inviteLoading ? (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                  )}
+                  Invite
+                </button>
+              </form>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-3 text-center">
+                An invitation email will be sent to your teammate.
+              </p>
+            </>
+          )}
+
+          {!isOwner && members.length === 0 && (
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+              You are a member of this team.
+            </p>
+          )}
+        </SectionCard>
+
+        {/* Remove member confirmation modal */}
+        {confirmRemoveMember && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setConfirmRemoveMember(null)} />
+            <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 w-full max-w-sm p-6">
+              <h3 className="text-base font-bold text-gray-900 dark:text-white mb-2">Remove member?</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                <span className="font-medium text-gray-700 dark:text-gray-300">{confirmRemoveMember.email}</span> will lose access to your team's data immediately.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setConfirmRemoveMember(null)}
+                  className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-semibold rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleRemoveMember(confirmRemoveMember.id)}
+                  disabled={!!removingId}
+                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {removingId ? (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : 'Remove'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Automations */}
+        <SectionCard
+          title="Automations"
+          icon={
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          }
+        >
+          <div className="mb-5">
+            <p className="text-base font-semibold text-gray-900 dark:text-white">Pre-built Automations</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Toggle automations on or off. Enabled automations run automatically when triggered.
+            </p>
+          </div>
+          <AutomationsPanel onToast={(m, t) => setToast({ message: m, type: t })} />
+        </SectionCard>
+
+        {/* Gmail Integration */}
+        <SectionCard
+          title="Gmail Integration"
+          icon={
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          }
+        >
+          <div className="mb-4">
+            <p className="text-base font-semibold text-gray-900 dark:text-white">Sync Gmail Emails</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Automatically sync emails with your CRM contacts and track communication history.
+            </p>
+          </div>
+          <GmailSettingsPanel onToast={(m, t) => setToast({ message: m, type: t })} />
+        </SectionCard>
+
+        {/* Import Data */}
+        <SectionCard
+          title="Import Data"
+          icon={
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+          }
+        >
+          <div className="mb-4">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-base font-semibold text-gray-900 dark:text-white">Import Contacts</span>
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded-full">CSV</span>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Migrate your contacts from any CRM in seconds.
+            </p>
+          </div>
+
+          <ImportContactsPanel onToast={(m, t) => setToast({ message: m, type: t })} />
+
+          <div className="mt-6 pt-6 border-t border-gray-100 dark:border-gray-800">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-base font-semibold text-gray-900 dark:text-white">Import Deals</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">CSV import for your deal pipeline.</p>
+              </div>
+              <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 px-3 py-1.5 rounded-lg">
+                Coming soon
+              </span>
+            </div>
+          </div>
+        </SectionCard>
+
+        {/* Danger Zone */}
+        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-red-200 dark:border-red-900/50 shadow-sm overflow-hidden">
+          <div className="flex items-center gap-3 px-6 py-4 border-b border-red-100 dark:border-red-900/40 bg-gradient-to-r from-red-50/50 to-white dark:from-red-950/20 dark:to-gray-900">
+            <div className="w-9 h-9 rounded-xl bg-red-100 dark:bg-red-950/50 flex items-center justify-center text-red-600 dark:text-red-400">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h2 className="text-base font-semibold text-red-600 dark:text-red-400">Danger Zone</h2>
+          </div>
+          <div className="p-6">
+            <div className="flex flex-col sm:flex-row items-start gap-4">
+              <div className="flex-1">
+                <p className="text-base font-semibold text-gray-900 dark:text-white">Delete Account</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Permanently delete your account and all associated data. This action cannot be undone.
+                </p>
+              </div>
+              <button
+                onClick={() => { setDeleteConfirm(''); setShowDeleteModal(true) }}
+                className="w-full sm:w-auto shrink-0 px-5 py-2.5 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-950/70 text-red-600 dark:text-red-400 text-sm font-semibold rounded-xl border border-red-200 dark:border-red-800 transition-colors"
+              >
+                Delete Account
               </button>
             </div>
           </div>
         </div>
-      )}
 
-      {toast && (
-        <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />
-      )}
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => !deleteLoading && setShowDeleteModal(false)} />
+            <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 w-full max-w-md p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950/50 flex items-center justify-center shrink-0">
+                  <svg className="w-5 h-5 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white">Delete Account</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">This is permanent and cannot be reversed.</p>
+                </div>
+              </div>
+
+              <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                All your contacts, deals, tasks, emails, and billing data will be permanently deleted.
+                To confirm, type your email address below:
+              </p>
+
+              <p className="text-xs font-mono font-semibold text-gray-700 dark:text-gray-300 mb-2 select-all">
+                {user?.email}
+              </p>
+
+              <input
+                type="email"
+                value={deleteConfirm}
+                onChange={e => setDeleteConfirm(e.target.value)}
+                placeholder={user?.email ?? 'your@email.com'}
+                className="w-full px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 transition-colors mb-4"
+                disabled={deleteLoading}
+              />
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  disabled={deleteLoading}
+                  className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-semibold rounded-xl transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={deleteConfirm !== user?.email || deleteLoading}
+                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  {deleteLoading && (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  )}
+                  {deleteLoading ? 'Deleting…' : 'Delete Everything'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {toast && (
+          <Toast message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />
+        )}
+      </div>
     </div>
   )
 }

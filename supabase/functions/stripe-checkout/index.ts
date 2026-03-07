@@ -9,7 +9,7 @@ const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY')!
 const stripePriceId = Deno.env.get('STRIPE_PRICE_ID')!
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const appUrl = Deno.env.get('APP_URL') ?? 'https://deskly.app'
+const appUrl = Deno.env.get('APP_URL') ?? 'https://desklycrm.com'
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 

@@ -27,6 +27,7 @@ export interface TeamMember {
   invite_token: string
   invited_at: string
   joined_at: string | null
+  expires_at: string | null
 }
 
 export interface TrialInfo {
@@ -54,6 +55,7 @@ export function isSubscribed(team: Team | null): boolean {
 
 // ─── Team CRUD ────────────────────────────────────────────────────────────────
 
+/** Fetch team where the user is the owner. */
 export async function getTeam(userId: string) {
   const { data, error } = await supabase
     .from('teams')
@@ -61,6 +63,34 @@ export async function getTeam(userId: string) {
     .eq('owner_id', userId)
     .maybeSingle()
   return { team: data as Team | null, error }
+}
+
+/**
+ * Unified team + role lookup for both owners and members.
+ * Returns the team the user belongs to and their role in it.
+ */
+export async function getTeamAndRole(
+  userId: string,
+): Promise<{ team: Team | null; role: 'owner' | 'member' | null }> {
+  const { data: membership } = await supabase
+    .from('team_members')
+    .select('team_id, role')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .maybeSingle()
+
+  if (!membership) return { team: null, role: null }
+
+  const { data: team } = await supabase
+    .from('teams')
+    .select('*')
+    .eq('id', membership.team_id)
+    .single()
+
+  return {
+    team: team as Team | null,
+    role: membership.role as 'owner' | 'member',
+  }
 }
 
 export async function getTeamMembers(teamId: string) {
@@ -81,12 +111,33 @@ export async function inviteMember(teamId: string, email: string) {
   return { member: data as TeamMember | null, error }
 }
 
+export async function resendInvite(memberId: string) {
+  // Fresh token + reset 7-day window
+  const newToken = crypto.randomUUID()
+  const newExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('team_members')
+    .update({
+      invite_token: newToken,
+      invited_at: new Date().toISOString(),
+      expires_at: newExpiry,
+    })
+    .eq('id', memberId)
+    .select()
+    .single()
+  return { member: data as TeamMember | null, error }
+}
+
 export async function removeMember(memberId: string) {
   const { error } = await supabase
     .from('team_members')
     .delete()
     .eq('id', memberId)
   return { error }
+}
+
+export async function cancelInvite(memberId: string) {
+  return removeMember(memberId)
 }
 
 export async function acceptInvite(inviteToken: string, userId: string) {
@@ -106,6 +157,34 @@ export async function getInviteByToken(token: string) {
     .eq('invite_token', token)
     .single()
   return { invite: data, error }
+}
+
+/** Check if user is already a member of any team (other than `excludeTeamId`). */
+export async function getUserActiveMembership(userId: string) {
+  const { data } = await supabase
+    .from('team_members')
+    .select('id, team_id, role')
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .maybeSingle()
+  return data as { id: string; team_id: string; role: string } | null
+}
+
+// ─── Invite email via edge function ──────────────────────────────────────────
+
+export async function sendInviteEmail(params: {
+  email: string
+  inviteToken: string
+  inviterEmail: string
+  teamName: string | null
+}) {
+  const { error } = await supabase.functions.invoke('send-invite', {
+    body: {
+      ...params,
+      siteUrl: window.location.origin,
+    },
+  })
+  return { error }
 }
 
 // ─── Stripe Checkout ─────────────────────────────────────────────────────────

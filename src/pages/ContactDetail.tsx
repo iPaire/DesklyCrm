@@ -411,7 +411,8 @@ export default function ContactDetail() {
     setQdName(name ?? `${contact?.company ?? contact?.name ?? ''} - Deal`)
     setQdValue(value != null && value > 0 ? String(value) : '')
     setQdStage(stage ?? 'lead')
-    setShowQuickDeal(true)
+    setShowQuickDeal(false)   // reset first so autoFocus re-fires if already open
+    setTimeout(() => setShowQuickDeal(true), 0)
   }
 
   const handleQuickDealCreate = async () => {

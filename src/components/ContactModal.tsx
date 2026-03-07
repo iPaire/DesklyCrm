@@ -47,7 +47,7 @@ export function ContactModal({ contact, onClose, onSaved }: ContactModalProps) {
 
   // Load custom column definitions
   useEffect(() => {
-    if (user) setCustomColumns(getColumnDefs(user.id))
+    if (user) getColumnDefs(user.id).then(setCustomColumns)
   }, [user])
 
   // Close on Escape

@@ -1,3 +1,5 @@
+import { supabase } from './supabase'
+
 export interface CustomColumnDef {
   key: string
   label: string
@@ -21,14 +23,17 @@ export function generateKey(label: string, existingKeys: string[]): string {
   return `${base}_${i}`
 }
 
-export function getColumnDefs(userId: string): CustomColumnDef[] {
-  try {
-    return JSON.parse(localStorage.getItem(`deskly_contact_cols_${userId}`) ?? '[]')
-  } catch {
-    return []
-  }
+export async function getColumnDefs(userId: string): Promise<CustomColumnDef[]> {
+  const { data } = await supabase
+    .from('user_settings')
+    .select('contact_columns')
+    .eq('user_id', userId)
+    .single()
+  return (data?.contact_columns ?? []) as CustomColumnDef[]
 }
 
-export function saveColumnDefs(userId: string, cols: CustomColumnDef[]) {
-  localStorage.setItem(`deskly_contact_cols_${userId}`, JSON.stringify(cols))
+export async function saveColumnDefs(userId: string, cols: CustomColumnDef[]): Promise<void> {
+  await supabase
+    .from('user_settings')
+    .upsert({ user_id: userId, contact_columns: cols }, { onConflict: 'user_id' })
 }

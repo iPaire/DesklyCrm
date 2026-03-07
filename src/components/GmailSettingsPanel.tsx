@@ -86,11 +86,10 @@ export function GmailSettingsPanel({ onToast }: Props) {
     try {
       const accessToken = await getValidToken(conn)
 
-      // Load contacts that have an email address
+      // Load contacts that have an email address (team-wide via RLS)
       const { data: contacts, error: contactsErr } = await supabase
         .from('contacts')
         .select('id, email, name')
-        .eq('user_id', user.id)
         .not('email', 'is', null)
 
       if (contactsErr) throw new Error(contactsErr.message)

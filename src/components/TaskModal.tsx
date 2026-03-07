@@ -81,11 +81,12 @@ export default function TaskModal({ isOpen, onClose, onSaved, task, contacts, de
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 overflow-y-auto">
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={!isLoading ? onClose : undefined}
       />
+      <div className="flex min-h-full items-center justify-center p-4">
 
       <div className="relative w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-800 z-10">
 
@@ -193,6 +194,7 @@ export default function TaskModal({ isOpen, onClose, onSaved, task, contacts, de
             </button>
           </div>
         </form>
+      </div>
       </div>
     </div>
   )

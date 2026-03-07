@@ -136,14 +136,7 @@ export default function Home() {
   const isLoggedIn = !isLoading && !!user
 
   return (
-    <div className="h-screen overflow-y-auto bg-white dark:bg-gray-950 font-sans flex flex-col transition-colors
-      [&::-webkit-scrollbar]:w-1.5
-      [&::-webkit-scrollbar-track]:bg-transparent
-      [&::-webkit-scrollbar-thumb]:bg-gray-300
-      [&::-webkit-scrollbar-thumb]:rounded-full
-      [&::-webkit-scrollbar-thumb:hover]:bg-gray-400
-      dark:[&::-webkit-scrollbar-thumb]:bg-gray-600
-      dark:[&::-webkit-scrollbar-thumb:hover]:bg-gray-500">
+    <div className="min-h-screen bg-white dark:bg-gray-950 font-sans flex flex-col transition-colors">
 
       {/* ── Navbar ── */}
       <header className="sticky top-0 z-40 w-full border-b border-gray-100 dark:border-gray-800 bg-white/90 dark:bg-gray-950/90 backdrop-blur-md">

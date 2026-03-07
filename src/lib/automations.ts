@@ -153,10 +153,10 @@ async function checkStaleDeals(userId: string): Promise<void> {
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - 7)
 
+  // No user_id filter: RLS returns team data automatically
   const { data: staleDeals } = await supabase
     .from('deals')
     .select('id, name, contact_id, stage, updated_at')
-    .eq('user_id', userId)
     .eq('archived', false)
     .not('stage', 'in', '("closed_won","closed_lost")')
     .lt('updated_at', cutoff.toISOString())
@@ -188,10 +188,10 @@ async function checkStaleDeals(userId: string): Promise<void> {
 async function checkOverdueTasks(userId: string): Promise<void> {
   const today = new Date().toISOString().split('T')[0]
 
+  // No user_id filter: RLS returns team data automatically
   const { data: overdue } = await supabase
     .from('tasks')
     .select('id, title, due_date, contact_id')
-    .eq('user_id', userId)
     .eq('completed', false)
     .lt('due_date', today)
 
@@ -210,10 +210,10 @@ async function checkAutoArchive(userId: string): Promise<void> {
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - 30)
 
+  // No user_id filter: RLS returns team data automatically
   const { data: closedDeals } = await supabase
     .from('deals')
     .select('id')
-    .eq('user_id', userId)
     .eq('archived', false)
     .in('stage', ['closed_won', 'closed_lost'])
     .lt('updated_at', cutoff.toISOString())
@@ -233,6 +233,9 @@ export async function runDailyChecks(userId: string): Promise<void> {
   const key = `deskly-auto-check-${new Date().toDateString()}`
   if (localStorage.getItem(key)) return   // already ran today
 
+  // Mark as done immediately so a failed check doesn't cause infinite retries
+  localStorage.setItem(key, '1')
+
   try {
     const automations = await getUserAutomations(userId)
 
@@ -241,8 +244,6 @@ export async function runDailyChecks(userId: string): Promise<void> {
       isEnabled(automations, 'task_overdue_alert')  && checkOverdueTasks(userId),
       isEnabled(automations, 'deal_auto_archive')   && checkAutoArchive(userId),
     ])
-
-    localStorage.setItem(key, '1')
   } catch {
     // Silently fail - daily checks are non-critical
   }
