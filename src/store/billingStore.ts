@@ -39,7 +39,15 @@ export const useBillingStore = create<BillingState>((set) => ({
     }
     const { members } = await getTeamMembers(team.id)
     const trialInfo = getTrialInfo(team.trial_start, team.trial_extended_days)
-    set({ team, members, trialInfo, isOwner: role === 'owner', isLoading: false })
+
+    // Sync seats to actual active member count (DB value may be stale)
+    const activeSeats = members.filter(m => m.status === 'active').length || 1
+    const teamWithSeats = activeSeats !== team.seats ? { ...team, seats: activeSeats } : team
+    if (activeSeats !== team.seats) {
+      supabase.from('teams').update({ seats: activeSeats }).eq('id', team.id)
+    }
+
+    set({ team: teamWithSeats, members, trialInfo, isOwner: role === 'owner', isLoading: false })
   },
 
   setTeam: (team) => {

@@ -1092,7 +1092,7 @@ export default function Settings() {
                     {subscribed && team?.current_period_end && (
                       <p className="text-xs text-blue-600 dark:text-blue-500 mt-2">
                         Next billing period: {new Date(team.current_period_end).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                        {' '}· ${(team.seats ?? 1) * 10}/month ({team.seats ?? 1} seat{(team.seats ?? 1) !== 1 ? 's' : ''} × $10)
+                        {' '}· ${(members.filter(m => m.status === 'active').length || 1) * 10}/month ({members.filter(m => m.status === 'active').length || 1} seat{(members.filter(m => m.status === 'active').length || 1) !== 1 ? 's' : ''} × $10)
                       </p>
                     )}
                   </div>
