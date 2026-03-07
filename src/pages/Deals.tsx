@@ -27,6 +27,8 @@ import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Toast } from '../components/Toast'
 import { useAuthStore } from '../store/authStore'
 import { getUserAutomations, isEnabled, runDealProposalTask } from '../lib/automations'
+import { useBillingStore } from '../store/billingStore'
+import { logTeamActivity } from '../lib/billing'
 
 // ─── Stage config ─────────────────────────────────────────────────────────────
 
@@ -342,7 +344,8 @@ function KanbanColumn({ stage, dealIds, allDeals, contacts, onEdit, onDelete, on
 // ─── Main Deals page ──────────────────────────────────────────────────────────
 
 export default function Deals() {
-  const user     = useAuthStore(s => s.user)
+  const user = useAuthStore(s => s.user)
+  const team = useBillingStore(s => s.team)
   const [deals,    setDeals]    = useState<Deal[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
   const [items,      setItems]      = useState<Record<StageId, string[]>>(buildItems([]))
@@ -475,6 +478,7 @@ export default function Deals() {
         const updatedDeal = { ...deal, stage: newStage }
         setDeals(prev => prev.map(d => d.id === activeId ? updatedDeal : d))
         setToast({ message: `Moved to ${STAGES.find(s => s.id === newStage)?.label ?? newStage}`, type: 'success' })
+        if (team && user) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'stage_changed', entityType: 'deal', entityId: deal.id, entityName: deal.name, details: { from: deal.stage, to: newStage } })
 
         // Automation: deal_proposal_task
         if (newStage === 'proposal' && user) {
@@ -536,6 +540,7 @@ export default function Deals() {
     setIsDeleting(true)
     const { error } = await supabase.from('deals').delete().eq('id', deleteTarget.id)
     if (!error) {
+      if (team && user) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'deleted', entityType: 'deal', entityId: deleteTarget.id, entityName: deleteTarget.name })
       setDeals(prev => {
         const next = prev.filter(d => d.id !== deleteTarget.id)
         setItems(buildItems(next))

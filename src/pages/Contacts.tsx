@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'rea
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
+import { useBillingStore } from '../store/billingStore'
+import { logTeamActivity } from '../lib/billing'
 import type { Contact } from '../types'
 import { ContactModal } from '../components/ContactModal'
 import { ConfirmDialog } from '../components/ConfirmDialog'
@@ -234,6 +236,7 @@ function ManageColumnsModal({
 export default function Contacts() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
+  const team = useBillingStore((s) => s.team)
 
   const [contacts, setContacts] = useState<Contact[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -497,6 +500,9 @@ export default function Contacts() {
     if (error) {
       setToast({ message: error.message, type: 'error' })
     } else {
+      if (team && user) {
+        logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'deleted', entityType: 'contact', entityId: deleteTarget.id, entityName: deleteTarget.name })
+      }
       setContacts((prev) => prev.filter((c) => c.id !== deleteTarget.id))
       setToast({ message: `${deleteTarget.name} deleted.`, type: 'success' })
     }

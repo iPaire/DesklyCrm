@@ -29,6 +29,19 @@ export interface TeamMember {
   joined_at: string | null
 }
 
+export interface TeamActivityLog {
+  id: string
+  team_id: string
+  user_id: string | null
+  user_email: string | null
+  action: 'created' | 'updated' | 'deleted' | 'completed' | 'stage_changed'
+  entity_type: 'contact' | 'deal' | 'task'
+  entity_id: string | null
+  entity_name: string | null
+  details: Record<string, unknown> | null
+  created_at: string
+}
+
 export interface TrialInfo {
   daysElapsed: number
   daysRemaining: number
@@ -87,27 +100,28 @@ export async function getTeam(userId: string) {
 /**
  * Unified team + role lookup for both owners and members.
  * Returns the team the user belongs to and their role in it.
+ *
+ * Priority: if the user is an active MEMBER of someone else's team (invited),
+ * that team takes precedence over their auto-created solo owned team.
+ * This prevents the trigger-created solo team from shadowing the real team.
  */
 export async function getTeamAndRole(
   userId: string,
-): Promise<{ team: Team | null; role: 'owner' | 'member' | null }> {
-  // Check if user owns a team first (owners are identified by teams.owner_id)
-  const { data: ownedTeam } = await supabase
-    .from('teams')
-    .select('*')
-    .eq('owner_id', userId)
-    .maybeSingle()
-  if (ownedTeam) return { team: ownedTeam as Team, role: 'owner' }
-
-  // Otherwise check if they're an active member of someone else's team
-  const { data: membership } = await supabase
+): Promise<{ team: Team | null; role: 'owner' | 'member' | null; membershipFound: boolean }> {
+  // Get ALL active memberships for this user
+  const { data: memberships } = await supabase
     .from('team_members')
     .select('team_id, role')
     .eq('user_id', userId)
     .eq('status', 'active')
-    .maybeSingle()
 
-  if (!membership) return { team: null, role: null }
+  if (!memberships || memberships.length === 0) {
+    return { team: null, role: null, membershipFound: false }
+  }
+
+  // Prefer 'member' role - means the user was invited into someone else's team.
+  // Fall back to 'owner' (their own auto-created team) if no other membership exists.
+  const membership = memberships.find(m => m.role === 'member') ?? memberships[0]
 
   const { data: team } = await supabase
     .from('teams')
@@ -118,6 +132,7 @@ export async function getTeamAndRole(
   return {
     team: team as Team | null,
     role: membership.role as 'owner' | 'member',
+    membershipFound: true,
   }
 }
 
@@ -221,6 +236,50 @@ export async function sendInviteEmail(params: {
     },
   })
   return { error }
+}
+
+// ─── Team Activity Logs ───────────────────────────────────────────────────────
+
+/** Fire-and-forget: log a member action. Silently ignores failures. */
+export async function logTeamActivity(params: {
+  teamId: string
+  userId: string
+  userEmail: string
+  action: TeamActivityLog['action']
+  entityType: TeamActivityLog['entity_type']
+  entityId?: string
+  entityName?: string
+  details?: Record<string, unknown>
+}): Promise<void> {
+  try {
+    await supabase.from('team_activity_logs').insert({
+      team_id:     params.teamId,
+      user_id:     params.userId,
+      user_email:  params.userEmail,
+      action:      params.action,
+      entity_type: params.entityType,
+      entity_id:   params.entityId ?? null,
+      entity_name: params.entityName ?? null,
+      details:     params.details ?? null,
+    })
+  } catch {
+    // non-blocking - never disrupt user flow
+  }
+}
+
+/** Fetch activity logs for a team. If userId is provided, filters to that member. */
+export async function getMemberActivity(teamId: string, userId?: string) {
+  let query = supabase
+    .from('team_activity_logs')
+    .select('*')
+    .eq('team_id', teamId)
+    .order('created_at', { ascending: false })
+    .limit(100)
+
+  if (userId) query = query.eq('user_id', userId)
+
+  const { data, error } = await query
+  return { logs: (data ?? []) as TeamActivityLog[], error }
 }
 
 // ─── Stripe Checkout ─────────────────────────────────────────────────────────

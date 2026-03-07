@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
+import { useBillingStore } from '../store/billingStore'
+import { logTeamActivity } from '../lib/billing'
 import type { Task, Contact, Deal } from '../types'
 
 interface Props {
@@ -17,6 +19,7 @@ interface Props {
 
 export default function TaskModal({ isOpen, onClose, onSaved, task, contacts, deals, defaultContactId = '', defaultTitle = '', defaultDueDate = '' }: Props) {
   const user = useAuthStore(s => s.user)
+  const team = useBillingStore(s => s.team)
   const [title,     setTitle]     = useState('')
   const [dueDate,   setDueDate]   = useState('')
   const [contactId, setContactId] = useState('')
@@ -67,12 +70,18 @@ export default function TaskModal({ isOpen, onClose, onSaved, task, contacts, de
       const { data, error: err } = await supabase
         .from('tasks').update(payload).eq('id', task.id).select().single()
       if (err) { setError(err.message); setIsLoading(false); return }
-      if (data) { onSaved(data as Task, false); onClose() }
+      if (data) {
+        if (team) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'updated', entityType: 'task', entityId: (data as Task).id, entityName: (data as Task).title })
+        onSaved(data as Task, false); onClose()
+      }
     } else {
       const { data, error: err } = await supabase
         .from('tasks').insert({ ...payload, user_id: user.id, completed: false }).select().single()
       if (err) { setError(err.message); setIsLoading(false); return }
-      if (data) { onSaved(data as Task, true); onClose() }
+      if (data) {
+        if (team) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'created', entityType: 'task', entityId: (data as Task).id, entityName: (data as Task).title })
+        onSaved(data as Task, true); onClose()
+      }
     }
 
     setIsLoading(false)

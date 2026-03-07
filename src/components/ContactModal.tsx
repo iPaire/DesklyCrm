@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 import type { Contact } from '../types'
 import { getUserAutomations, isEnabled, runContactReachOutTask } from '../lib/automations'
+import { logTeamActivity } from '../lib/billing'
+import { useBillingStore } from '../store/billingStore'
 import { getColumnDefs, type CustomColumnDef } from '../lib/contactColumns'
 
 interface FormData {
@@ -25,6 +27,7 @@ const inputClass =
 
 export function ContactModal({ contact, onClose, onSaved }: ContactModalProps) {
   const user = useAuthStore((s) => s.user)
+  const team = useBillingStore((s) => s.team)
   const isEditing = contact !== null
 
   const [customColumns, setCustomColumns] = useState<CustomColumnDef[]>([])
@@ -101,7 +104,11 @@ export function ContactModal({ contact, onClose, onSaved }: ContactModalProps) {
         .select()
         .single()
       if (dbError) { setError(dbError.message); setIsLoading(false); return }
-      onSaved('Contact updated successfully.', data as Contact)
+      const updated = data as Contact
+      if (team && user) {
+        logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'updated', entityType: 'contact', entityId: updated.id, entityName: updated.name })
+      }
+      onSaved('Contact updated successfully.', updated)
     } else {
       const { data, error: dbError } = await supabase
         .from('contacts')
@@ -110,6 +117,9 @@ export function ContactModal({ contact, onClose, onSaved }: ContactModalProps) {
         .single()
       if (dbError) { setError(dbError.message); setIsLoading(false); return }
       const newContact = data as Contact
+      if (team) {
+        logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'created', entityType: 'contact', entityId: newContact.id, entityName: newContact.name })
+      }
       onSaved('Contact added successfully.', newContact)
 
       // Automation: contact_reach_out_task

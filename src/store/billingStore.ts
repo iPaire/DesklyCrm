@@ -24,9 +24,9 @@ export const useBillingStore = create<BillingState>((set) => ({
 
   fetchBilling: async (userId: string) => {
     set({ isLoading: true })
-    let { team, role } = await getTeamAndRole(userId)
-    if (!team) {
-      // User has no team (signed up before auto-create trigger) - create one now
+    let { team, role, membershipFound } = await getTeamAndRole(userId)
+    if (!membershipFound) {
+      // User has no team at all (signed up before auto-create trigger) - create one now
       const { data: { user } } = await supabase.auth.getUser()
       const email = user?.email ?? userId
       team = await ensureTeam(userId, email)

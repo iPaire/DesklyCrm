@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
+import { useBillingStore } from '../store/billingStore'
+import { logTeamActivity } from '../lib/billing'
 import type { Deal, Contact } from '../types'
 
 const STAGE_OPTIONS: { value: Deal['stage']; label: string }[] = [
@@ -25,6 +27,7 @@ interface Props {
 
 export default function DealModal({ isOpen, onClose, onSaved, deal, contacts, defaultStage = 'lead', defaultContactId = '', defaultName = '' }: Props) {
   const user = useAuthStore(s => s.user)
+  const team = useBillingStore(s => s.team)
   const [name, setName]           = useState('')
   const [value, setValue]         = useState('')
   const [stage, setStage]         = useState<Deal['stage']>(defaultStage)
@@ -73,12 +76,18 @@ export default function DealModal({ isOpen, onClose, onSaved, deal, contacts, de
       const { data, error: err } = await supabase
         .from('deals').update(payload).eq('id', deal.id).select().single()
       if (err) { setError(err.message); setIsLoading(false); return }
-      if (data) { onSaved(data as Deal, false); onClose() }
+      if (data) {
+        if (team) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'updated', entityType: 'deal', entityId: (data as Deal).id, entityName: (data as Deal).name, details: { stage: (data as Deal).stage } })
+        onSaved(data as Deal, false); onClose()
+      }
     } else {
       const { data, error: err } = await supabase
         .from('deals').insert({ ...payload, user_id: user.id }).select().single()
       if (err) { setError(err.message); setIsLoading(false); return }
-      if (data) { onSaved(data as Deal, true); onClose() }
+      if (data) {
+        if (team) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'created', entityType: 'deal', entityId: (data as Deal).id, entityName: (data as Deal).name, details: { stage: (data as Deal).stage } })
+        onSaved(data as Deal, true); onClose()
+      }
     }
 
     setIsLoading(false)

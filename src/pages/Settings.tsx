@@ -10,6 +10,8 @@ import {
   cancelInvite,
   startStripeCheckout,
   findUserIdByEmail,
+  getMemberActivity,
+  type TeamActivityLog,
 } from '../lib/billing'
 import { Toast } from '../components/Toast'
 import { GmailSettingsPanel } from '../components/GmailSettingsPanel'
@@ -132,6 +134,7 @@ const MemberRow = ({
   onResend,
   onCancel,
   onCopyLink,
+  onViewActivity,
   isRemoving,
   isResending,
   recentlyResent,
@@ -140,6 +143,7 @@ const MemberRow = ({
   showResend,
   showCancel,
   showCopyLink,
+  showActivity,
 }: {
   member: any
   isCurrentUser: boolean
@@ -147,6 +151,7 @@ const MemberRow = ({
   onResend: () => void
   onCancel: () => void
   onCopyLink?: () => void
+  onViewActivity?: () => void
   isRemoving: boolean
   isResending: boolean
   recentlyResent: boolean
@@ -155,6 +160,7 @@ const MemberRow = ({
   showResend: boolean
   showCancel: boolean
   showCopyLink?: boolean
+  showActivity?: boolean
 }) => {
   const isOwnerRow = member.role === 'owner'
   const initial = member.email[0].toUpperCase()
@@ -182,6 +188,17 @@ const MemberRow = ({
         </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
+        {showActivity && (
+          <button
+            onClick={onViewActivity}
+            className="p-2 text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 transition-colors"
+            title="View activity"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+          </button>
+        )}
         {showLeave && (
           <button
             onClick={onRemove}
@@ -260,6 +277,114 @@ const ProgressBar = ({ value, status }: { value: number; status: 'expired' | 'wa
         className={`h-full rounded-full bg-gradient-to-r ${colorClass} transition-all duration-500`}
         style={{ width: `${value}%` }}
       />
+    </div>
+  )
+}
+
+// ─── Member Activity Modal ─────────────────────────────────────────────────────
+
+const ACTION_LABELS: Record<string, string> = {
+  created:       'Created',
+  updated:       'Updated',
+  deleted:       'Deleted',
+  completed:     'Completed',
+  stage_changed: 'Moved stage',
+}
+
+const ENTITY_LABELS: Record<string, string> = {
+  contact: 'contact',
+  deal:    'deal',
+  task:    'task',
+}
+
+const ACTION_COLORS: Record<string, string> = {
+  created:       'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
+  updated:       'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
+  deleted:       'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300',
+  completed:     'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300',
+  stage_changed: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300',
+}
+
+function MemberActivityModal({
+  member,
+  teamId,
+  onClose,
+}: {
+  member: { email: string; user_id: string | null }
+  teamId: string
+  onClose: () => void
+}) {
+  const [logs,    setLogs]    = useState<TeamActivityLog[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!member.user_id) { setLoading(false); return }
+    getMemberActivity(teamId, member.user_id).then(({ logs: l }) => {
+      setLogs(l)
+      setLoading(false)
+    })
+  }, [teamId, member.user_id])
+
+  const formatTime = (iso: string) => {
+    const d = new Date(iso)
+    return d.toLocaleDateString('ro-RO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800">
+          <div>
+            <h3 className="text-base font-bold text-gray-900 dark:text-white">Activity log</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{member.email}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {loading ? (
+            <div className="flex items-center justify-center py-10">
+              <span className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="text-center py-10">
+              <p className="text-sm text-gray-400 dark:text-gray-500">No activity recorded yet.</p>
+            </div>
+          ) : (
+            logs.map(log => (
+              <div key={log.id} className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-xl">
+                <div className="shrink-0 mt-0.5">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${ACTION_COLORS[log.action] ?? 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>
+                    {ACTION_LABELS[log.action] ?? log.action}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    <span className="font-medium">{log.entity_name ?? '-'}</span>
+                    <span className="text-gray-400 dark:text-gray-500"> · {ENTITY_LABELS[log.entity_type] ?? log.entity_type}</span>
+                  </p>
+                  {log.action === 'stage_changed' && log.details && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                      {String(log.details.from)} → {String(log.details.to)}
+                    </p>
+                  )}
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{formatTime(log.created_at)}</p>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   )
 }
@@ -655,6 +780,7 @@ export default function Settings() {
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [resendingId, setResendingId] = useState<string | null>(null)
   const [confirmRemoveMember, setConfirmRemoveMember] = useState<{ id: string; email: string } | null>(null)
+  const [activityMember, setActivityMember] = useState<{ email: string; user_id: string | null } | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [deleteLoading, setDeleteLoading] = useState(false)
@@ -1083,6 +1209,7 @@ export default function Settings() {
                       try { await navigator.clipboard.writeText(link) } catch {}
                       setToast({ message: `Link copiat pentru ${m.email}!`, type: 'success' })
                     }}
+                    onViewActivity={() => setActivityMember({ email: m.email, user_id: m.user_id })}
                     isRemoving={removingId === m.id}
                     isResending={resendingId === m.id}
                     recentlyResent={recentlyResentIds.has(m.id)}
@@ -1091,6 +1218,7 @@ export default function Settings() {
                     showResend={!isMe && isPending && isOwner}
                     showCancel={!isMe && isPending && isOwner}
                     showCopyLink={!isMe && isPending && isOwner}
+                    showActivity={isOwner && !isMe && m.status === 'active'}
                   />
                 )
               })}
@@ -1194,6 +1322,15 @@ export default function Settings() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Member Activity Modal */}
+        {activityMember && team && (
+          <MemberActivityModal
+            member={activityMember}
+            teamId={team.id}
+            onClose={() => setActivityMember(null)}
+          />
         )}
 
         {/* Automations */}

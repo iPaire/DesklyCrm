@@ -4,6 +4,9 @@ import type { Task, Contact, Deal } from '../types'
 import TaskModal from '../components/TaskModal'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Toast } from '../components/Toast'
+import { useAuthStore } from '../store/authStore'
+import { useBillingStore } from '../store/billingStore'
+import { logTeamActivity } from '../lib/billing'
 
 type FilterTab = 'all' | 'today' | 'overdue' | 'completed'
 
@@ -201,6 +204,8 @@ function EmptyState({ filter, onAdd }: { filter: FilterTab; onAdd: () => void })
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function Tasks() {
+  const user = useAuthStore(s => s.user)
+  const team = useBillingStore(s => s.team)
   const [tasks,    setTasks]    = useState<Task[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
   const [deals,    setDeals]    = useState<Deal[]>([])
@@ -273,6 +278,8 @@ export default function Tasks() {
     if (error) {
       setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: task.completed } : t))
       setToast({ message: error.message, type: 'error' })
+    } else if (team && user) {
+      logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'completed', entityType: 'task', entityId: task.id, entityName: task.title, details: { completed: next } })
     }
   }
 
@@ -301,6 +308,7 @@ export default function Tasks() {
     setIsDeleting(true)
     const { error } = await supabase.from('tasks').delete().eq('id', deleteTarget.id)
     if (!error) {
+      if (team && user) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'deleted', entityType: 'task', entityId: deleteTarget.id, entityName: deleteTarget.title })
       setTasks(prev => prev.filter(t => t.id !== deleteTarget.id))
       setToast({ message: 'Task deleted.', type: 'success' })
     } else {
