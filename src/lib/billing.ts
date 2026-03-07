@@ -69,8 +69,9 @@ export function isSubscribed(team: Team | null): boolean {
 // ─── Team CRUD ────────────────────────────────────────────────────────────────
 
 /** Ensure a team exists for the user. Idempotent - handles the case where a team exists but
- *  the owner team_members row is missing (e.g. after being removed from another team). */
-export async function ensureTeam(userId: string, userEmail: string): Promise<Team | null> {
+ *  the owner team_members row is missing (e.g. after being removed from another team).
+ *  Pass userCreatedAt (from auth.users.created_at) so the trial starts from the real signup date. */
+export async function ensureTeam(userId: string, userEmail: string, userCreatedAt?: string): Promise<Team | null> {
   const now = new Date().toISOString()
 
   // Check if team already exists for this user (avoids 409 conflict on insert)
@@ -91,10 +92,11 @@ export async function ensureTeam(userId: string, userEmail: string): Promise<Tea
     return existing as Team
   }
 
-  // No team exists - create one
+  // No team exists - create one. Use the real signup date so the trial isn't reset to today.
+  const trialStart = userCreatedAt ?? now
   const { data, error } = await supabase
     .from('teams')
-    .insert({ owner_id: userId, owner_email: userEmail, name: userEmail, trial_start: now })
+    .insert({ owner_id: userId, owner_email: userEmail, name: userEmail, trial_start: trialStart })
     .select()
     .single()
   if (error) return null

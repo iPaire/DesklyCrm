@@ -26,10 +26,11 @@ export const useBillingStore = create<BillingState>((set) => ({
     set({ isLoading: true })
     let { team, role, membershipFound } = await getTeamAndRole(userId)
     if (!membershipFound) {
-      // User has no team at all (signed up before auto-create trigger) - create one now
+      // User has no team at all (signed up before auto-create trigger) - create one now.
+      // Pass created_at so the trial start reflects the real signup date, not today.
       const { data: { user } } = await supabase.auth.getUser()
       const email = user?.email ?? userId
-      team = await ensureTeam(userId, email)
+      team = await ensureTeam(userId, email, user?.created_at)
       role = team ? 'owner' : null
     }
     if (!team) {

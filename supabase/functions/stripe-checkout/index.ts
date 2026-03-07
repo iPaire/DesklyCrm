@@ -42,14 +42,27 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Get the user's team to determine seat count
+    // Get the user's team
     const { data: team } = await supabase
       .from('teams')
       .select('id, seats, stripe_customer_id')
       .eq('owner_id', user.id)
       .single()
 
-    const seats = team?.seats ?? 1
+    // Always count live active members so checkout quantity is never stale
+    let seats = 1
+    if (team?.id) {
+      const { count } = await supabase
+        .from('team_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('team_id', team.id)
+        .eq('status', 'active')
+      seats = Math.max(1, count ?? 1)
+      // Keep the seats column in sync while we're here
+      if (seats !== team.seats) {
+        await supabase.from('teams').update({ seats }).eq('id', team.id)
+      }
+    }
 
     // Build Stripe Checkout Session payload
     const params: Record<string, unknown> = {

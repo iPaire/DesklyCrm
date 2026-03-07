@@ -938,6 +938,8 @@ export default function Settings() {
       setToast({ message: error.message, type: 'error' })
       setRemovingId(null)
     } else {
+      // Sync Stripe quantity now that a seat was freed
+      if (team) syncSubscriptionQuantity(team.id)
       await fetchBilling(user.id)
     }
   }
