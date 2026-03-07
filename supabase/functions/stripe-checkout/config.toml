@@ -1,2 +1,1 @@
-[functions.stripe-checkout]
 verify_jwt = false

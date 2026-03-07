@@ -111,10 +111,17 @@ export async function getInviteByToken(token: string) {
 // ─── Stripe Checkout ─────────────────────────────────────────────────────────
 
 export async function startStripeCheckout(): Promise<{ url: string | null; error: string | null }> {
-  // Refresh session first to ensure token is valid (prevents Invalid JWT)
-  await supabase.auth.refreshSession()
+  // Refresh session and get fresh token explicitly
+  const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
+  const session = refreshData?.session ?? (await supabase.auth.getSession()).data.session
+  if (refreshError || !session) {
+    return { url: null, error: 'Not authenticated. Please sign in again.' }
+  }
 
-  const { data, error } = await supabase.functions.invoke('stripe-checkout', { body: {} })
+  const { data, error } = await supabase.functions.invoke('stripe-checkout', {
+    body: {},
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  })
   if (error) {
     let detail = error.message
     try {
