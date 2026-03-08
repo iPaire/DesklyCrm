@@ -3,7 +3,6 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
-  TouchSensor,
   KeyboardSensor,
   useSensor,
   useSensors,
@@ -159,7 +158,6 @@ function DealCardDisplay({ deal, contacts, overlay }: CardDisplayProps) {
           : 'shadow-sm group-hover:shadow-md transition-shadow duration-150'}
       `}
     >
-      {/* Grip dots */}
       <div className="flex items-start justify-between gap-2 mb-1.5">
         <p className="text-[13px] font-semibold text-gray-900 dark:text-white leading-snug flex-1">
           {deal.name}
@@ -197,7 +195,7 @@ function DealCardDisplay({ deal, contacts, overlay }: CardDisplayProps) {
   )
 }
 
-// ─── Sortable deal card ────────────────────────────────────────────────────────
+// ─── Desktop sortable deal card ────────────────────────────────────────────────
 
 interface DealCardProps {
   deal: Deal
@@ -228,7 +226,6 @@ function DealCard({ deal, contacts, onEdit, onDelete }: DealCardProps) {
     >
       <DealCardDisplay deal={deal} contacts={contacts} />
 
-      {/* Delete button - stopPropagation so card click (edit) doesn't fire */}
       <button
         onPointerDown={e => e.stopPropagation()}
         onClick={e => { e.stopPropagation(); onDelete(deal) }}
@@ -248,7 +245,188 @@ function DealCard({ deal, contacts, onEdit, onDelete }: DealCardProps) {
   )
 }
 
-// ─── Kanban column ─────────────────────────────────────────────────────────────
+// ─── Mobile deal card (long press + swipe) ────────────────────────────────────
+
+interface MobileDealCardProps {
+  deal: Deal
+  contacts: Contact[]
+  onEdit: (d: Deal) => void
+  onDelete: (d: Deal) => void
+  onMoveStage: (deal: Deal, direction: 'prev' | 'next') => void
+  isSelected: boolean
+  onSelect: (id: string) => void
+  onDeselect: () => void
+}
+
+function MobileDealCard({ deal, contacts, onEdit, onDelete, onMoveStage, isSelected, onSelect, onDeselect }: MobileDealCardProps) {
+  const cardRef         = useRef<HTMLDivElement>(null)
+  const longPressRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const touchStartX     = useRef(0)
+  const touchStartY     = useRef(0)
+  const touchMoved      = useRef(false)
+  const isLongPressed   = useRef(false)
+
+  // Non-passive touchmove to prevent board scroll during swipe
+  useEffect(() => {
+    const el = cardRef.current
+    if (!el) return
+    const prevent = (e: TouchEvent) => {
+      if (isLongPressed.current) e.preventDefault()
+    }
+    el.addEventListener('touchmove', prevent, { passive: false })
+    return () => el.removeEventListener('touchmove', prevent)
+  }, [])
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0]
+    touchStartX.current   = t.clientX
+    touchStartY.current   = t.clientY
+    touchMoved.current    = false
+    isLongPressed.current = false
+
+    longPressRef.current = setTimeout(() => {
+      if (!touchMoved.current) {
+        isLongPressed.current = true
+        onSelect(deal.id)
+        try { navigator.vibrate(50) } catch { /* unsupported */ }
+      }
+    }, 500)
+  }
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (isLongPressed.current) return // handled by native listener
+    const dx = Math.abs(e.touches[0].clientX - touchStartX.current)
+    const dy = Math.abs(e.touches[0].clientY - touchStartY.current)
+    if (dx > 8 || dy > 8) {
+      touchMoved.current = true
+      if (longPressRef.current) {
+        clearTimeout(longPressRef.current)
+        longPressRef.current = null
+      }
+    }
+  }
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (longPressRef.current) {
+      clearTimeout(longPressRef.current)
+      longPressRef.current = null
+    }
+
+    const dx  = e.changedTouches[0].clientX - touchStartX.current
+    const ady = Math.abs(e.changedTouches[0].clientY - touchStartY.current)
+
+    if (isLongPressed.current) {
+      // Swipe detected after long press
+      if (Math.abs(dx) > 60 && Math.abs(dx) > ady) {
+        onMoveStage(deal, dx > 0 ? 'next' : 'prev')
+      }
+      onDeselect()
+      isLongPressed.current = false
+      return
+    }
+
+    // Quick tap (no movement, no long press)
+    if (!touchMoved.current) {
+      if (isSelected) {
+        onDeselect()
+      } else {
+        onEdit(deal)
+      }
+    }
+  }
+
+  const contact  = contacts.find(c => c.id === deal.contact_id)
+  const cfg      = CFG[deal.stage]
+  const stageIdx = STAGES.findIndex(s => s.id === deal.stage)
+
+  return (
+    <div
+      ref={cardRef}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      className={`transition-transform duration-200 ${isSelected ? 'scale-[1.02]' : ''}`}
+    >
+      <div
+        className={`
+          bg-white dark:bg-gray-900 rounded-xl
+          border border-gray-200/80 dark:border-gray-700/60
+          border-l-4 ${cfg.border}
+          p-3.5 select-none shadow-sm
+          transition-all duration-200
+          ${isSelected ? 'ring-2 ring-primary-500/40 shadow-lg' : ''}
+        `}
+      >
+        {/* Header row */}
+        <div className="flex items-start justify-between gap-2 mb-1.5">
+          <p className="text-[13px] font-semibold text-gray-900 dark:text-white leading-snug flex-1">
+            {deal.name}
+          </p>
+          {isSelected ? (
+            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+              {stageIdx > 0 && (
+                <span className="text-[10px] font-medium text-primary-500">
+                  ← {STAGES[stageIdx - 1].label}
+                </span>
+              )}
+              {stageIdx < STAGES.length - 1 && (
+                <span className="text-[10px] font-medium text-primary-500">
+                  {STAGES[stageIdx + 1].label} →
+                </span>
+              )}
+            </div>
+          ) : (
+            <svg className="w-3 h-3 text-gray-300 dark:text-gray-600 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+              <circle cx="7"  cy="4"  r="1.5" />
+              <circle cx="13" cy="4"  r="1.5" />
+              <circle cx="7"  cy="10" r="1.5" />
+              <circle cx="13" cy="10" r="1.5" />
+              <circle cx="7"  cy="16" r="1.5" />
+              <circle cx="13" cy="16" r="1.5" />
+            </svg>
+          )}
+        </div>
+
+        {deal.value > 0 && (
+          <p className={`text-base font-bold mb-2 ${cfg.value}`}>
+            {formatCurrency(deal.value)}
+          </p>
+        )}
+
+        {contact && (
+          <div className="flex items-center gap-1.5 mt-1.5">
+            <div className="w-4 h-4 rounded-full bg-primary-100 dark:bg-primary-950 flex items-center justify-center shrink-0">
+              <span className="text-[9px] font-bold text-primary-700 dark:text-primary-300">
+                {contact.name[0].toUpperCase()}
+              </span>
+            </div>
+            <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{contact.name}</span>
+          </div>
+        )}
+
+        {/* Selected state footer */}
+        {isSelected && (
+          <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+            <p className="text-[10px] text-primary-400 dark:text-primary-500">
+              Swipe ← → to move stage
+            </p>
+            <button
+              onTouchEnd={e => { e.stopPropagation(); onDelete(deal); onDeselect() }}
+              className="p-1 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-950 transition-all"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Desktop Kanban column ─────────────────────────────────────────────────────
 
 interface ColumnProps {
   stage: { id: StageId; label: string }
@@ -278,7 +456,6 @@ function KanbanColumn({ stage, dealIds, allDeals, contacts, onEdit, onDelete, on
         transition-colors duration-150
       `}
     >
-      {/* Column header */}
       <div className="px-3.5 pt-3.5 pb-2.5 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -298,7 +475,6 @@ function KanbanColumn({ stage, dealIds, allDeals, contacts, onEdit, onDelete, on
         )}
       </div>
 
-      {/* Cards */}
       <SortableContext items={dealIds} strategy={verticalListSortingStrategy}>
         <div
           ref={setNodeRef}
@@ -314,7 +490,6 @@ function KanbanColumn({ stage, dealIds, allDeals, contacts, onEdit, onDelete, on
             />
           ))}
 
-          {/* Empty state */}
           {dealIds.length === 0 && (
             <div className="flex items-center justify-center py-8">
               <p className="text-xs text-gray-400 dark:text-gray-600">No deals</p>
@@ -323,9 +498,97 @@ function KanbanColumn({ stage, dealIds, allDeals, contacts, onEdit, onDelete, on
         </div>
       </SortableContext>
 
-      {/* Quick add */}
       <button
         onPointerDown={e => e.stopPropagation()}
+        onClick={() => onAdd(stage.id)}
+        className="m-2 shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl
+          text-xs font-medium text-gray-500 dark:text-gray-400
+          hover:text-gray-800 dark:hover:text-gray-200
+          hover:bg-white/70 dark:hover:bg-gray-900/60
+          transition-colors duration-150"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+        </svg>
+        Add deal
+      </button>
+    </div>
+  )
+}
+
+// ─── Mobile Kanban column ──────────────────────────────────────────────────────
+
+interface MobileColumnProps {
+  stage: { id: StageId; label: string }
+  dealIds: string[]
+  allDeals: Deal[]
+  contacts: Contact[]
+  onEdit: (d: Deal) => void
+  onDelete: (d: Deal) => void
+  onAdd: (stage: StageId) => void
+  selectedDealId: string | null
+  onSelect: (id: string) => void
+  onDeselect: () => void
+  onMoveStage: (deal: Deal, direction: 'prev' | 'next') => void
+}
+
+function MobileKanbanColumn({
+  stage, dealIds, allDeals, contacts,
+  onEdit, onDelete, onAdd,
+  selectedDealId, onSelect, onDeselect, onMoveStage,
+}: MobileColumnProps) {
+  const cfg = CFG[stage.id]
+
+  const stageDeals = dealIds
+    .map(id => allDeals.find(d => d.id === id))
+    .filter((d): d is Deal => !!d)
+
+  const totalValue = stageDeals.reduce((s, d) => s + d.value, 0)
+
+  return (
+    <div className={`w-[264px] shrink-0 flex flex-col rounded-2xl ${cfg.column} transition-colors duration-150`}>
+      <div className="px-3.5 pt-3.5 pb-2.5 shrink-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
+            <span className={`text-xs font-bold uppercase tracking-wider ${cfg.label}`}>
+              {stage.label}
+            </span>
+          </div>
+          <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 bg-white/70 dark:bg-gray-900/70 px-1.5 py-0.5 rounded-md tabular-nums">
+            {dealIds.length}
+          </span>
+        </div>
+        {totalValue > 0 && (
+          <p className={`text-sm font-bold pl-4 mt-0.5 ${cfg.label}`}>
+            {formatCurrency(totalValue)}
+          </p>
+        )}
+      </div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-1 space-y-2 scrollbar-thin">
+        {stageDeals.map(deal => (
+          <MobileDealCard
+            key={deal.id}
+            deal={deal}
+            contacts={contacts}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onMoveStage={onMoveStage}
+            isSelected={selectedDealId === deal.id}
+            onSelect={onSelect}
+            onDeselect={onDeselect}
+          />
+        ))}
+
+        {dealIds.length === 0 && (
+          <div className="flex items-center justify-center py-8">
+            <p className="text-xs text-gray-400 dark:text-gray-600">No deals</p>
+          </div>
+        )}
+      </div>
+
+      <button
         onClick={() => onAdd(stage.id)}
         className="m-2 shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl
           text-xs font-medium text-gray-500 dark:text-gray-400
@@ -358,7 +621,18 @@ export default function Deals() {
   const itemsRef = useRef(items)
   useEffect(() => { itemsRef.current = items }, [items])
 
-  // Drag state
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  // Mobile selected deal
+  const [selectedDealId, setSelectedDealId] = useState<string | null>(null)
+
+  // Desktop drag state
   const [activeId, setActiveId] = useState<string | null>(null)
 
   // Modal state
@@ -373,10 +647,9 @@ export default function Deals() {
   // Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
-  // DnD sensors - mouse/trackpad: 8px distance; touch: 250ms hold then drag
+  // Desktop DnD sensors - mouse/trackpad only (no touch sensor)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
 
@@ -404,7 +677,7 @@ export default function Deals() {
 
   const activeDeal = activeId ? deals.find(d => d.id === activeId) ?? null : null
 
-  // ── Drag handlers ──────────────────────────────────────────────────────────
+  // ── Desktop drag handlers ──────────────────────────────────────────────────
   const handleDragStart = ({ active }: DragStartEvent) => {
     setActiveId(active.id as string)
   }
@@ -427,7 +700,6 @@ export default function Deals() {
       const srcIdx = src.indexOf(activeId)
       src.splice(srcIdx, 1)
 
-      // Drop at end of column if over the column itself, else before the hovered card
       const dstIdx = STAGE_IDS.has(overId) ? dst.length : Math.max(0, dst.indexOf(overId))
       dst.splice(dstIdx, 0, activeId)
 
@@ -440,7 +712,6 @@ export default function Deals() {
     const currentItems = itemsRef.current
 
     if (!over) {
-      // Dropped outside board - revert visual state
       setItems(buildItems(deals))
       setActiveId(null)
       return
@@ -448,7 +719,6 @@ export default function Deals() {
 
     const overId = over.id as string
 
-    // Handle reorder within same column
     const activeContainer = findContainer(activeId, currentItems)
     const overContainer   = STAGE_IDS.has(overId)
       ? (overId as StageId)
@@ -466,7 +736,6 @@ export default function Deals() {
       }
     }
 
-    // Persist stage change to Supabase if needed
     const deal     = deals.find(d => d.id === activeId)
     const newStage = findContainer(activeId, currentItems)
 
@@ -482,7 +751,6 @@ export default function Deals() {
         setToast({ message: `Moved to ${STAGES.find(s => s.id === newStage)?.label ?? newStage}`, type: 'success' })
         if (team && user) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'stage_changed', entityType: 'deal', entityId: deal.id, entityName: deal.name, details: { from: deal.stage, to: newStage } })
 
-        // Automation: deal_proposal_task
         if (newStage === 'proposal' && user && team) {
           const automations = await getTeamAutomations(team.id)
           if (isEnabled(automations, 'deal_proposal_task')) {
@@ -496,6 +764,44 @@ export default function Deals() {
     }
 
     setActiveId(null)
+  }
+
+  // ── Mobile move stage ──────────────────────────────────────────────────────
+  const handleMoveStage = async (deal: Deal, direction: 'prev' | 'next') => {
+    const stageIdx = STAGES.findIndex(s => s.id === deal.stage)
+    const newIdx   = direction === 'next' ? stageIdx + 1 : stageIdx - 1
+
+    if (newIdx < 0 || newIdx >= STAGES.length) {
+      setToast({ message: direction === 'next' ? 'Already at last stage' : 'Already at first stage', type: 'error' })
+      return
+    }
+
+    const newStage = STAGES[newIdx].id
+
+    const { error } = await supabase
+      .from('deals')
+      .update({ stage: newStage })
+      .eq('id', deal.id)
+
+    if (!error) {
+      const updatedDeal = { ...deal, stage: newStage }
+      setDeals(prev => {
+        const next = prev.map(d => d.id === deal.id ? updatedDeal : d)
+        setItems(buildItems(next))
+        return next
+      })
+      setToast({ message: `Moved to ${STAGES[newIdx].label}`, type: 'success' })
+      if (team && user) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'stage_changed', entityType: 'deal', entityId: deal.id, entityName: deal.name, details: { from: deal.stage, to: newStage } })
+
+      if (newStage === 'proposal' && user && team) {
+        const automations = await getTeamAutomations(team.id)
+        if (isEnabled(automations, 'deal_proposal_task')) {
+          await runDealProposalTask(updatedDeal, contacts, user.id)
+        }
+      }
+    } else {
+      setToast({ message: error.message, type: 'error' })
+    }
   }
 
   // ── CRUD ───────────────────────────────────────────────────────────────────
@@ -527,7 +833,6 @@ export default function Deals() {
       })
       setToast({ message: 'Deal updated!', type: 'success' })
 
-      // Automation: deal moved to proposal via modal
       if (saved.stage === 'proposal' && prev?.stage !== 'proposal' && user && team) {
         const automations = await getTeamAutomations(team.id)
         if (isEnabled(automations, 'deal_proposal_task')) {
@@ -641,16 +946,14 @@ export default function Deals() {
 
       {/* ── Board ── */}
       <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden p-5">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCorners}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="flex gap-3 h-full">
+        {isMobile ? (
+          /* Mobile: no DnD, long press + swipe */
+          <div
+            className="flex gap-3 h-full"
+            onClick={() => setSelectedDealId(null)}
+          >
             {STAGES.map(stage => (
-              <KanbanColumn
+              <MobileKanbanColumn
                 key={stage.id}
                 stage={stage}
                 dealIds={items[stage.id]}
@@ -659,24 +962,51 @@ export default function Deals() {
                 onEdit={openEdit}
                 onDelete={setDeleteTarget}
                 onAdd={openAdd}
+                selectedDealId={selectedDealId}
+                onSelect={setSelectedDealId}
+                onDeselect={() => setSelectedDealId(null)}
+                onMoveStage={handleMoveStage}
               />
             ))}
           </div>
-
-          {/* Floating card while dragging */}
-          <DragOverlay
-            dropAnimation={{
-              duration: 180,
-              easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
-            }}
+        ) : (
+          /* Desktop: full DnD */
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
           >
-            {activeDeal && (
-              <div className="rotate-1 scale-[1.04]">
-                <DealCardDisplay deal={activeDeal} contacts={contacts} overlay />
-              </div>
-            )}
-          </DragOverlay>
-        </DndContext>
+            <div className="flex gap-3 h-full">
+              {STAGES.map(stage => (
+                <KanbanColumn
+                  key={stage.id}
+                  stage={stage}
+                  dealIds={items[stage.id]}
+                  allDeals={deals}
+                  contacts={contacts}
+                  onEdit={openEdit}
+                  onDelete={setDeleteTarget}
+                  onAdd={openAdd}
+                />
+              ))}
+            </div>
+
+            <DragOverlay
+              dropAnimation={{
+                duration: 180,
+                easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)',
+              }}
+            >
+              {activeDeal && (
+                <div className="rotate-1 scale-[1.04]">
+                  <DealCardDisplay deal={activeDeal} contacts={contacts} overlay />
+                </div>
+              )}
+            </DragOverlay>
+          </DndContext>
+        )}
       </div>
 
       {/* ── Modals ── */}

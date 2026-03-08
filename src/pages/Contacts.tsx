@@ -766,9 +766,9 @@ export default function Contacts() {
                       </th>
                     )}
                     <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Name</th>
-                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hidden sm:table-cell">Email</th>
-                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hidden md:table-cell">Phone</th>
-                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hidden lg:table-cell">Company</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider min-w-[120px]">Email</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider min-w-[100px]">Phone</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider min-w-[100px]">Company</th>
                     {customColumns.map((col) => (
                       <th key={col.key} className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
                         {col.label}
@@ -837,21 +837,16 @@ export default function Contacts() {
                               <td className="px-5 py-3.5">
                                 <div className="flex items-center gap-3">
                                   <Avatar name={contact.name} />
-                                  <div>
-                                    <p className="text-sm font-medium text-gray-900 dark:text-white">{contact.name}</p>
-                                    {contact.email && (
-                                      <p className="text-xs text-gray-400 dark:text-gray-500 sm:hidden">{contact.email}</p>
-                                    )}
-                                  </div>
+                                  <p className="text-sm font-medium text-gray-900 dark:text-white">{contact.name}</p>
                                 </div>
                               </td>
-                              <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 hidden sm:table-cell">
+                              <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 max-w-[160px] truncate">
                                 {contact.email ?? <span className="text-gray-200 dark:text-gray-700">-</span>}
                               </td>
-                              <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 hidden md:table-cell">
+                              <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400">
                                 {contact.phone ?? <span className="text-gray-200 dark:text-gray-700">-</span>}
                               </td>
-                              <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 hidden lg:table-cell">
+                              <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400">
                                 {contact.company ?? <span className="text-gray-200 dark:text-gray-700">-</span>}
                               </td>
                               {customColumns.map((col) => (
