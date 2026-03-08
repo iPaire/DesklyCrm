@@ -1355,7 +1355,9 @@ export default function Settings() {
                     key={m.id}
                     member={m}
                     isCurrentUser={isMe}
-                    trialExpired={trialInfo?.isExpired}
+                    trialExpired={m.role === 'owner'
+                      ? trialInfo?.isExpired
+                      : m.joined_at ? getTrialInfo(m.joined_at).isExpired : false}
                     onRemove={() => {
                       if (isMe) handleLeaveTeam()
                       else setConfirmRemoveMember({ id: m.id, email: m.email })

@@ -1,10 +1,11 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useMemo } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useDarkModeStore } from '../store/darkModeStore'
 import { useBillingStore } from '../store/billingStore'
 import { NotificationBell } from './NotificationBell'
 import { TrialGate } from './TrialGate'
+import { getTrialInfo } from '../lib/billing'
 
 const navItems = [
   {
@@ -77,8 +78,19 @@ export default function Layout() {
   const signOut = useAuthStore((s) => s.signOut)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { isDark, toggle: toggleDark } = useDarkModeStore()
-  const { trialInfo, team } = useBillingStore()
+  const { team } = useBillingStore()
+  const isOwner = useBillingStore((s) => s.isOwner)
+  const memberJoinedAt = useBillingStore((s) => s.memberJoinedAt)
+  const hasPaidSeat = useBillingStore((s) => s.hasPaidSeat)
   const isSubscribed = team?.subscription_status === 'active'
+
+  // For members: show their personal trial. For owners: show team trial.
+  const trialInfo = useMemo(() => {
+    if (!team || hasPaidSeat) return null
+    if (!isOwner && memberJoinedAt) return getTrialInfo(memberJoinedAt)
+    if (isOwner) return getTrialInfo(team.trial_start, team.trial_extended_days)
+    return null
+  }, [team, isOwner, memberJoinedAt, hasPaidSeat])
 
   const handleSignOut = async () => {
     await signOut()
