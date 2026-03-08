@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -245,36 +245,200 @@ function DealCard({ deal, contacts, onEdit, onDelete }: DealCardProps) {
   )
 }
 
-// ─── Mobile deal card (long press → held, tap column to drop) ─────────────────
+// ─── Mobile: ghost placeholder at original position ───────────────────────────
+
+function MobileHeldGhost({ deal }: { deal: Deal }) {
+  const cfg = CFG[deal.stage]
+  return (
+    <div className="opacity-20 pointer-events-none transition-opacity duration-200">
+      <div className={`
+        bg-white dark:bg-gray-900 rounded-xl
+        border border-gray-200/80 dark:border-gray-700/60
+        border-l-4 ${cfg.border}
+        p-3.5 select-none shadow-sm
+      `}>
+        <p className="text-[13px] font-semibold text-gray-900 dark:text-white leading-snug">
+          {deal.name}
+        </p>
+        {deal.value > 0 && (
+          <p className={`text-base font-bold mt-1 ${cfg.value}`}>
+            {formatCurrency(deal.value)}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Mobile: ghost preview in target column ───────────────────────────────────
+
+function MobileGhostPreview({ deal }: { deal: Deal }) {
+  const cfg = CFG[deal.stage]
+  return (
+    <div className="pointer-events-none transition-all duration-200">
+      <div className={`
+        rounded-xl
+        border-2 border-dashed border-primary-400 dark:border-primary-500
+        border-l-4 ${cfg.border}
+        p-3.5 select-none
+        bg-primary-50/40 dark:bg-primary-950/20
+      `}>
+        <p className="text-[13px] font-semibold text-gray-400 dark:text-gray-500 leading-snug">
+          {deal.name}
+        </p>
+        {deal.value > 0 && (
+          <p className={`text-base font-bold mt-1 opacity-50 ${cfg.value}`}>
+            {formatCurrency(deal.value)}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Mobile: floating "held" card fixed at bottom of screen ───────────────────
+
+interface FloatingHeldCardProps {
+  deal: Deal
+  contacts: Contact[]
+  hoveredStage: StageId | null
+  onCancel: () => void
+  onDrop: (stage: StageId) => void
+  onDelete: () => void
+}
+
+function FloatingHeldCard({ deal, contacts, hoveredStage, onCancel, onDrop, onDelete }: FloatingHeldCardProps) {
+  const targetStage = (hoveredStage && hoveredStage !== deal.stage) ? hoveredStage : null
+  const targetLabel = targetStage ? STAGES.find(s => s.id === targetStage)?.label : null
+
+  return (
+    <>
+      {/* Non-interactive backdrop tint */}
+      <div className="fixed inset-0 z-40 pointer-events-none bg-black/10" />
+
+      {/* Floating panel */}
+      <div className="fixed bottom-20 inset-x-4 z-50">
+
+        {/* Stage indicator */}
+        <div className="mb-3 flex justify-center">
+          {targetLabel ? (
+            <div className="flex items-center gap-1.5 bg-primary-600 text-white text-xs font-bold px-3.5 py-1.5 rounded-full shadow-lg">
+              <span>→</span>
+              <span>{targetLabel}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 bg-black/40 dark:bg-white/20 text-white text-xs font-medium px-3.5 py-1.5 rounded-full backdrop-blur-sm">
+              <span>Scroll to pick a column</span>
+            </div>
+          )}
+        </div>
+
+        {/* Deal card rendered as if held in hand */}
+        <div
+          style={{
+            transform: 'rotate(1.5deg) scale(1.03)',
+            filter: 'drop-shadow(0 16px 32px rgba(0,0,0,0.28))',
+          }}
+        >
+          <DealCardDisplay deal={deal} contacts={contacts} overlay />
+        </div>
+
+        {/* Action buttons */}
+        <div className="mt-3 flex gap-2">
+          {/* Delete */}
+          <button
+            onTouchEnd={e => { e.preventDefault(); e.stopPropagation(); onDelete() }}
+            onClick={e => { e.stopPropagation(); onDelete() }}
+            className="p-2.5 rounded-xl border border-red-200 dark:border-red-800
+              bg-white dark:bg-gray-900
+              text-red-500 dark:text-red-400
+              active:bg-red-50 dark:active:bg-red-950/40
+              transition-colors shrink-0"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+
+          {/* Cancel */}
+          <button
+            onTouchEnd={e => { e.preventDefault(); e.stopPropagation(); onCancel() }}
+            onClick={e => { e.stopPropagation(); onCancel() }}
+            className="flex-1 py-2.5 rounded-xl
+              border border-gray-300 dark:border-gray-600
+              bg-white dark:bg-gray-800
+              text-sm font-semibold text-gray-600 dark:text-gray-300
+              active:bg-gray-50 dark:active:bg-gray-700
+              transition-colors"
+          >
+            Cancel
+          </button>
+
+          {/* Move */}
+          {targetStage && (
+            <button
+              onTouchEnd={e => { e.preventDefault(); e.stopPropagation(); onDrop(targetStage) }}
+              onClick={e => { e.stopPropagation(); onDrop(targetStage) }}
+              className="flex-[2] py-2.5 rounded-xl
+                bg-primary-600 active:bg-primary-700
+                text-white text-sm font-bold shadow-lg
+                transition-colors"
+            >
+              Move to {targetLabel}
+            </button>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ─── Mobile deal card ─────────────────────────────────────────────────────────
 
 interface MobileDealCardProps {
   deal: Deal
   contacts: Contact[]
   onEdit: (d: Deal) => void
-  onDelete: (d: Deal) => void
-  isSelected: boolean
-  onSelect: (id: string) => void
-  onDeselect: () => void
+  isHeld: boolean      // this deal is currently held
+  isBlocked: boolean   // another deal is held - block long press
+  onHold: (id: string) => void
 }
 
-function MobileDealCard({ deal, contacts, onEdit, onDelete, isSelected, onSelect, onDeselect }: MobileDealCardProps) {
+function MobileDealCard({ deal, contacts, onEdit, isHeld, isBlocked, onHold }: MobileDealCardProps) {
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const touchStartX  = useRef(0)
   const touchStartY  = useRef(0)
   const touchMoved   = useRef(false)
+  const didHold      = useRef(false)
+
+  // When held - render ghost placeholder only
+  if (isHeld) {
+    return <MobileHeldGhost deal={deal} />
+  }
+
+  const clearTimer = () => {
+    if (longPressRef.current) {
+      clearTimeout(longPressRef.current)
+      longPressRef.current = null
+    }
+  }
 
   const handleTouchStart = (e: React.TouchEvent) => {
+    if (isBlocked) return
     const t = e.touches[0]
     touchStartX.current = t.clientX
     touchStartY.current = t.clientY
     touchMoved.current  = false
+    didHold.current     = false
 
     longPressRef.current = setTimeout(() => {
       if (!touchMoved.current) {
-        onSelect(deal.id)
-        try { navigator.vibrate(50) } catch { /* unsupported */ }
+        didHold.current = true
+        onHold(deal.id)
+        try { navigator.vibrate(60) } catch { /* unsupported */ }
       }
-    }, 500)
+    }, 450)
   }
 
   const handleTouchMove = (e: React.TouchEvent) => {
@@ -282,21 +446,19 @@ function MobileDealCard({ deal, contacts, onEdit, onDelete, isSelected, onSelect
     const dy = Math.abs(e.touches[0].clientY - touchStartY.current)
     if (dx > 8 || dy > 8) {
       touchMoved.current = true
-      if (longPressRef.current) {
-        clearTimeout(longPressRef.current)
-        longPressRef.current = null
-      }
+      clearTimer()
     }
   }
 
   const handleTouchEnd = () => {
-    if (longPressRef.current) {
-      clearTimeout(longPressRef.current)
-      longPressRef.current = null
+    clearTimer()
+    // If long press just fired → stay held, don't open edit
+    if (didHold.current) {
+      didHold.current = false
+      return
     }
     if (!touchMoved.current) {
-      if (isSelected) onDeselect()
-      else onEdit(deal)
+      onEdit(deal)
     }
   }
 
@@ -308,18 +470,14 @@ function MobileDealCard({ deal, contacts, onEdit, onDelete, isSelected, onSelect
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      className={`transition-all duration-200 ${isSelected ? 'scale-[1.02] opacity-60' : ''}`}
+      className={`transition-opacity duration-150 ${isBlocked ? 'opacity-50' : ''}`}
     >
-      <div
-        className={`
-          bg-white dark:bg-gray-900 rounded-xl
-          border border-gray-200/80 dark:border-gray-700/60
-          border-l-4 ${cfg.border}
-          p-3.5 select-none shadow-sm
-          transition-all duration-200
-          ${isSelected ? 'ring-2 ring-primary-500/40 shadow-lg' : ''}
-        `}
-      >
+      <div className={`
+        bg-white dark:bg-gray-900 rounded-xl
+        border border-gray-200/80 dark:border-gray-700/60
+        border-l-4 ${cfg.border}
+        p-3.5 select-none shadow-sm
+      `}>
         <div className="flex items-start justify-between gap-2 mb-1.5">
           <p className="text-[13px] font-semibold text-gray-900 dark:text-white leading-snug flex-1">
             {deal.name}
@@ -348,23 +506,6 @@ function MobileDealCard({ deal, contacts, onEdit, onDelete, isSelected, onSelect
               </span>
             </div>
             <span className="text-xs text-gray-500 dark:text-gray-400 truncate">{contact.name}</span>
-          </div>
-        )}
-
-        {isSelected && (
-          <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
-            <p className="text-[10px] text-primary-400 dark:text-primary-500">
-              Scroll · tap column to move · tap here to cancel
-            </p>
-            <button
-              onTouchEnd={e => { e.stopPropagation(); onDelete(deal); onDeselect() }}
-              className="p-1 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-950 transition-all"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-            </button>
           </div>
         )}
       </div>
@@ -470,23 +611,22 @@ interface MobileColumnProps {
   allDeals: Deal[]
   contacts: Contact[]
   onEdit: (d: Deal) => void
-  onDelete: (d: Deal) => void
   onAdd: (stage: StageId) => void
   selectedDealId: string | null
   selectedDeal: Deal | null
-  onSelect: (id: string) => void
-  onDeselect: () => void
-  onDropDeal: (targetStage: StageId) => void
+  onHold: (id: string) => void
+  isHoveredTarget: boolean
+  colRef: (el: HTMLDivElement | null) => void
 }
 
 function MobileKanbanColumn({
   stage, dealIds, allDeals, contacts,
-  onEdit, onDelete, onAdd,
-  selectedDealId, selectedDeal, onSelect, onDeselect, onDropDeal,
+  onEdit, onAdd,
+  selectedDealId, selectedDeal,
+  onHold, isHoveredTarget, colRef,
 }: MobileColumnProps) {
-  const cfg     = CFG[stage.id]
-  const canDrop = selectedDeal !== null && selectedDeal.stage !== stage.id
-
+  const cfg        = CFG[stage.id]
+  const isBlocked  = !!selectedDeal
   const stageDeals = dealIds
     .map(id => allDeals.find(d => d.id === id))
     .filter((d): d is Deal => !!d)
@@ -494,11 +634,23 @@ function MobileKanbanColumn({
   const totalValue = stageDeals.reduce((s, d) => s + d.value, 0)
 
   return (
-    <div className={`w-[264px] shrink-0 flex flex-col rounded-2xl ${canDrop ? cfg.columnOver : cfg.column} transition-colors duration-150`}>
+    <div
+      ref={colRef}
+      className={`
+        w-[264px] shrink-0 flex flex-col rounded-2xl
+        ${isHoveredTarget ? cfg.columnOver : cfg.column}
+        transition-colors duration-200
+        ${isHoveredTarget ? 'ring-2 ring-primary-400/60 dark:ring-primary-500/50' : ''}
+      `}
+    >
       <div className="px-3.5 pt-3.5 pb-2.5 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
+            <span className={`
+              w-2 h-2 rounded-full ${cfg.dot}
+              transition-transform duration-200
+              ${isHoveredTarget ? 'scale-150' : ''}
+            `} />
             <span className={`text-xs font-bold uppercase tracking-wider ${cfg.label}`}>
               {stage.label}
             </span>
@@ -512,14 +664,6 @@ function MobileKanbanColumn({
             {formatCurrency(totalValue)}
           </p>
         )}
-        {canDrop && (
-          <button
-            onClick={e => { e.stopPropagation(); onDropDeal(stage.id) }}
-            className="mt-2 w-full py-1.5 rounded-lg border-2 border-dashed border-primary-400 dark:border-primary-600 bg-primary-50/60 dark:bg-primary-950/40 text-[11px] font-semibold text-primary-600 dark:text-primary-400 active:bg-primary-100 dark:active:bg-primary-900/50 transition-colors"
-          >
-            Move here
-          </button>
-        )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-1 space-y-2 scrollbar-thin">
@@ -529,23 +673,20 @@ function MobileKanbanColumn({
             deal={deal}
             contacts={contacts}
             onEdit={onEdit}
-            onDelete={onDelete}
-            isSelected={selectedDealId === deal.id}
-            onSelect={onSelect}
-            onDeselect={onDeselect}
+            isHeld={selectedDealId === deal.id}
+            isBlocked={isBlocked && selectedDealId !== deal.id}
+            onHold={onHold}
           />
         ))}
 
-        {dealIds.length === 0 && (
-          <div
-            className="flex items-center justify-center py-8"
-            onClick={canDrop ? e => { e.stopPropagation(); onDropDeal(stage.id) } : undefined}
-          >
-            {canDrop ? (
-              <p className="text-xs text-primary-400 dark:text-primary-500 font-medium">Tap to move here</p>
-            ) : (
-              <p className="text-xs text-gray-400 dark:text-gray-600">No deals</p>
-            )}
+        {/* Ghost preview of the held deal shown in the target column */}
+        {isHoveredTarget && selectedDeal && (
+          <MobileGhostPreview deal={selectedDeal} />
+        )}
+
+        {dealIds.length === 0 && !isHoveredTarget && (
+          <div className="flex items-center justify-center py-8">
+            <p className="text-xs text-gray-400 dark:text-gray-600">No deals</p>
           </div>
         )}
       </div>
@@ -591,8 +732,11 @@ export default function Deals() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  // Mobile selected deal
+  // Mobile: held deal + hovered stage tracking
   const [selectedDealId, setSelectedDealId] = useState<string | null>(null)
+  const [hoveredStage,   setHoveredStage]   = useState<StageId | null>(null)
+  const boardRef      = useRef<HTMLDivElement>(null)
+  const columnRefsMap = useRef<Partial<Record<StageId, HTMLDivElement>>>({})
 
   // Desktop drag state
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -614,6 +758,40 @@ export default function Deals() {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   )
+
+  // ── Detect which column is centered in view ────────────────────────────────
+  const updateHoveredStage = useCallback(() => {
+    const board = boardRef.current
+    if (!board) return
+    const boardRect    = board.getBoundingClientRect()
+    const boardCenterX = boardRect.left + boardRect.width / 2
+
+    let closest: StageId | null = null
+    let minDist = Infinity
+
+    for (const stage of STAGES) {
+      const el = columnRefsMap.current[stage.id]
+      if (!el) continue
+      const rect      = el.getBoundingClientRect()
+      const colCenter = rect.left + rect.width / 2
+      const dist      = Math.abs(colCenter - boardCenterX)
+      if (dist < minDist) {
+        minDist  = dist
+        closest  = stage.id
+      }
+    }
+
+    if (closest) setHoveredStage(closest)
+  }, [])
+
+  // When a deal is selected, set initial hovered stage from scroll position
+  useEffect(() => {
+    if (selectedDealId) {
+      updateHoveredStage()
+    } else {
+      setHoveredStage(null)
+    }
+  }, [selectedDealId, updateHoveredStage])
 
   // ── Fetch ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -637,7 +815,8 @@ export default function Deals() {
     load()
   }, [retryKey])
 
-  const activeDeal = activeId ? deals.find(d => d.id === activeId) ?? null : null
+  const activeDeal   = activeId      ? deals.find(d => d.id === activeId)      ?? null : null
+  const selectedDeal = selectedDealId ? deals.find(d => d.id === selectedDealId) ?? null : null
 
   // ── Desktop drag handlers ──────────────────────────────────────────────────
   const handleDragStart = ({ active }: DragStartEvent) => {
@@ -816,9 +995,6 @@ export default function Deals() {
     setDeleteTarget(null)
   }
 
-  // ── Selected deal (mobile) ─────────────────────────────────────────────────
-  const selectedDeal = selectedDealId ? deals.find(d => d.id === selectedDealId) ?? null : null
-
   // ── Summary stats ──────────────────────────────────────────────────────────
   const pipeline = deals
     .filter(d => !['closed_won', 'closed_lost'].includes(d.stage))
@@ -903,13 +1079,14 @@ export default function Deals() {
       </div>
 
       {/* ── Board ── */}
-      <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden p-5">
+      <div
+        ref={isMobile ? boardRef : undefined}
+        className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden p-5"
+        onScroll={isMobile && selectedDealId ? updateHoveredStage : undefined}
+      >
         {isMobile ? (
-          /* Mobile: long press to hold, scroll freely, tap column header to drop */
-          <div
-            className="flex gap-3 h-full"
-            onClick={() => setSelectedDealId(null)}
-          >
+          /* Mobile: long-press to hold, scroll freely, floating card to drop */
+          <div className="flex gap-3 h-full">
             {STAGES.map(stage => (
               <MobileKanbanColumn
                 key={stage.id}
@@ -918,16 +1095,16 @@ export default function Deals() {
                 allDeals={deals}
                 contacts={contacts}
                 onEdit={openEdit}
-                onDelete={setDeleteTarget}
                 onAdd={openAdd}
                 selectedDealId={selectedDealId}
                 selectedDeal={selectedDeal}
-                onSelect={setSelectedDealId}
-                onDeselect={() => setSelectedDealId(null)}
-                onDropDeal={targetStage => {
-                  const deal = deals.find(d => d.id === selectedDealId)
-                  if (deal) handleMoveDealToStage(deal, targetStage)
-                }}
+                onHold={setSelectedDealId}
+                isHoveredTarget={
+                  !!selectedDeal &&
+                  hoveredStage === stage.id &&
+                  selectedDeal.stage !== stage.id
+                }
+                colRef={el => { columnRefsMap.current[stage.id] = el ?? undefined }}
               />
             ))}
           </div>
@@ -970,6 +1147,21 @@ export default function Deals() {
           </DndContext>
         )}
       </div>
+
+      {/* ── Mobile floating held card ── */}
+      {isMobile && selectedDeal && (
+        <FloatingHeldCard
+          deal={selectedDeal}
+          contacts={contacts}
+          hoveredStage={hoveredStage}
+          onCancel={() => setSelectedDealId(null)}
+          onDrop={targetStage => handleMoveDealToStage(selectedDeal, targetStage)}
+          onDelete={() => {
+            setSelectedDealId(null)
+            setDeleteTarget(selectedDeal)
+          }}
+        />
+      )}
 
       {/* ── Modals ── */}
       <DealModal
