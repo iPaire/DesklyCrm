@@ -11,7 +11,7 @@ export interface Team {
   trial_extended_days: number
   stripe_customer_id: string | null
   stripe_subscription_id: string | null
-  subscription_status: 'trialing' | 'active' | 'canceled' | 'past_due' | 'unpaid'
+  subscription_status: 'trialing' | 'active' | 'canceled' | 'past_due' | 'unpaid' | 'ended'
   seats: number
   current_period_end: string | null
   created_at: string

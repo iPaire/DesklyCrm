@@ -46,9 +46,10 @@ export const useBillingStore = create<BillingState>((set) => ({
     const trialInfo = getTrialInfo(team.trial_start, team.trial_extended_days)
 
     // When trial expires, mark it in DB so status is the source of truth
+    let currentTeam: Team = team
     if (trialInfo.isExpired && team.subscription_status === 'trialing') {
       supabase.from('teams').update({ subscription_status: 'ended' }).eq('id', team.id)
-      team = { ...team, subscription_status: 'ended' }
+      currentTeam = { ...team, subscription_status: 'ended' }
     }
 
     // Per-member trial: based on their joined_at date.
@@ -65,19 +66,19 @@ export const useBillingStore = create<BillingState>((set) => ({
     const memberTrialInfo = storedMemberJoinedAt ? getTrialInfo(storedMemberJoinedAt) : null
 
     const activeSeats = members.filter(m => m.status === 'active').length || 1
-    const teamWithSeats = activeSeats !== team.seats ? { ...team, seats: activeSeats } : team
-    if (activeSeats !== team.seats) {
-      supabase.from('teams').update({ seats: activeSeats }).eq('id', team.id)
+    const teamWithSeats: Team = activeSeats !== currentTeam.seats ? { ...currentTeam, seats: activeSeats } : currentTeam
+    if (activeSeats !== currentTeam.seats) {
+      supabase.from('teams').update({ seats: activeSeats }).eq('id', currentTeam.id)
     }
 
     // Auto-restore: if owner isn't subscribed but may have paid in Stripe, silently sync
-    if (role === 'owner' && team.subscription_status !== 'active') {
+    if (role === 'owner' && currentTeam.subscription_status !== 'active') {
       const { restored } = await checkAndRestoreSubscription()
       if (restored) {
         // Re-fetch team from DB now that it's updated
-        const { data: updatedTeam } = await supabase.from('teams').select('*').eq('id', team.id).single()
+        const { data: updatedTeam } = await supabase.from('teams').select('*').eq('id', currentTeam.id).single()
         if (updatedTeam) {
-          set({ team: updatedTeam as typeof team, members, trialInfo: getTrialInfo(updatedTeam.trial_start, updatedTeam.trial_extended_days), memberTrialInfo, hasPaidSeat: true, isOwner: true, isLoading: false })
+          set({ team: updatedTeam as Team, members, trialInfo: getTrialInfo(updatedTeam.trial_start, updatedTeam.trial_extended_days), memberTrialInfo, hasPaidSeat: true, isOwner: true, isLoading: false })
           return
         }
       }
