@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     // Get the user's team (maybeSingle avoids throwing when no row found)
     const { data: team } = await supabase
       .from('teams')
-      .select('id, seats, stripe_customer_id')
+      .select('id, seats, stripe_customer_id, stripe_subscription_id, subscription_status')
       .eq('owner_id', user.id)
       .maybeSingle()
 
@@ -63,6 +63,64 @@ Deno.serve(async (req) => {
         status: 404,
         headers: corsHeaders,
       })
+    }
+
+    // Prevent double-subscription: if already active, refuse new checkout
+    if (team.subscription_status === 'active') {
+      return new Response(JSON.stringify({ error: 'already_subscribed' }), {
+        status: 400,
+        headers: corsHeaders,
+      })
+    }
+
+    // If a Stripe subscription ID exists, verify its real status with Stripe before allowing a new checkout
+    if (team.stripe_subscription_id) {
+      const subRes = await fetch(`https://api.stripe.com/v1/subscriptions/${team.stripe_subscription_id}`, {
+        headers: { Authorization: `Bearer ${stripeSecretKey}` },
+      })
+      if (subRes.ok) {
+        const sub = await subRes.json()
+        if (sub.status === 'active' || sub.status === 'trialing') {
+          // DB was out of sync - fix it now and refuse new checkout
+          await supabase.from('teams').update({
+            subscription_status: 'active',
+            stripe_customer_id: sub.customer,
+            current_period_end: sub.current_period_end
+              ? new Date(sub.current_period_end * 1000).toISOString()
+              : null,
+          }).eq('id', team.id)
+          return new Response(JSON.stringify({ error: 'already_subscribed' }), {
+            status: 400,
+            headers: corsHeaders,
+          })
+        }
+      }
+    }
+
+    // No subscription ID in DB - check by customer ID in case payment succeeded but DB wasn't updated
+    if (team.stripe_customer_id && !team.stripe_subscription_id) {
+      const listRes = await fetch(
+        `https://api.stripe.com/v1/subscriptions?customer=${team.stripe_customer_id}&status=active&limit=1`,
+        { headers: { Authorization: `Bearer ${stripeSecretKey}` } },
+      )
+      if (listRes.ok) {
+        const list = await listRes.json()
+        const activeSub = list.data?.[0]
+        if (activeSub) {
+          // Found an active subscription not saved in DB - fix it
+          await supabase.from('teams').update({
+            subscription_status: 'active',
+            stripe_subscription_id: activeSub.id,
+            current_period_end: activeSub.current_period_end
+              ? new Date(activeSub.current_period_end * 1000).toISOString()
+              : null,
+          }).eq('id', team.id)
+          return new Response(JSON.stringify({ error: 'already_subscribed' }), {
+            status: 400,
+            headers: corsHeaders,
+          })
+        }
+      }
     }
 
     // Always count live active members so checkout quantity is never stale
@@ -87,7 +145,7 @@ Deno.serve(async (req) => {
           quantity: seats,
         },
       ],
-      success_url: `${appUrl}/settings?billing=success`,
+      success_url: `${appUrl}/settings?billing=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/settings?billing=canceled`,
       client_reference_id: user.id,
       customer_email: team.stripe_customer_id ? undefined : user.email,

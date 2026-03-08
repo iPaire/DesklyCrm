@@ -317,11 +317,8 @@ export async function getMemberActivity(teamId: string, userId?: string) {
 /** Fire-and-forget: sync the Stripe subscription quantity to match active member count. */
 export async function syncSubscriptionQuantity(teamId: string): Promise<void> {
   try {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
     await supabase.functions.invoke('update-subscription', {
       body: { team_id: teamId },
-      headers: { Authorization: `Bearer ${session.access_token}` },
     })
   } catch {
     // non-blocking
@@ -330,13 +327,8 @@ export async function syncSubscriptionQuantity(teamId: string): Promise<void> {
 
 /** Open the Stripe Customer Portal for the team owner to manage billing. */
 export async function getStripePortalUrl(): Promise<{ url: string | null; error: string | null }> {
-  const { data: refreshData } = await supabase.auth.refreshSession()
-  const session = refreshData?.session ?? (await supabase.auth.getSession()).data.session
-  if (!session) return { url: null, error: 'Not authenticated. Please sign in again.' }
-
   const { data, error } = await supabase.functions.invoke('stripe-portal', {
     body: {},
-    headers: { Authorization: `Bearer ${session.access_token}` },
   })
   if (error) {
     let detail = error.message
@@ -349,19 +341,39 @@ export async function getStripePortalUrl(): Promise<{ url: string | null; error:
   return { url: data?.url ?? null, error: null }
 }
 
+// ─── Auth helper ─────────────────────────────────────────────────────────────
+
+/** Returns a fresh access_token, refreshing if expired. Never calls refreshSession() blindly. */
+async function getFreshToken(): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return null
+
+  // Decode JWT expiry - JWTs use base64URL (- and _), atob needs standard base64 (+ and /)
+  try {
+    const b64 = session.access_token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')
+    const payload = JSON.parse(atob(b64.padEnd(b64.length + (4 - b64.length % 4) % 4, '=')))
+    const expiresAt = payload.exp * 1000
+    if (expiresAt > Date.now() + 10_000) {
+      // Token still valid for at least 10s - use it
+      return session.access_token
+    }
+  } catch { /* malformed token - fall through to refresh */ }
+
+  // Token expired or malformed - refresh
+  const { data: refreshed, error } = await supabase.auth.refreshSession()
+  if (error || !refreshed.session) return null
+  return refreshed.session.access_token
+}
+
 // ─── Stripe Checkout ─────────────────────────────────────────────────────────
 
 export async function startStripeCheckout(): Promise<{ url: string | null; error: string | null }> {
-  // Refresh session and get fresh token explicitly
-  const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession()
-  const session = refreshData?.session ?? (await supabase.auth.getSession()).data.session
-  if (refreshError || !session) {
-    return { url: null, error: 'Not authenticated. Please sign in again.' }
-  }
+  const token = await getFreshToken()
+  if (!token) return { url: null, error: 'session_expired' }
 
   const { data, error } = await supabase.functions.invoke('stripe-checkout', {
     body: {},
-    headers: { Authorization: `Bearer ${session.access_token}` },
+    headers: { Authorization: `Bearer ${token}` },
   })
   if (error) {
     let detail = error.message
@@ -370,6 +382,15 @@ export async function startStripeCheckout(): Promise<{ url: string | null; error
       if (body) detail = body.error ?? body.message ?? detail
     } catch {}
     console.error('stripe-checkout error:', detail)
+    if (typeof detail === 'string') {
+      if (detail === 'already_subscribed') {
+        return { url: null, error: 'already_subscribed' }
+      }
+      // Only treat as session error when Supabase/JWT gateway explicitly rejects the token
+      if (detail.toLowerCase().includes('jwt') || detail === 'Unauthorized') {
+        return { url: null, error: 'session_expired' }
+      }
+    }
     return { url: null, error: detail ?? 'Failed to start checkout' }
   }
   return { url: data?.url ?? null, error: null }

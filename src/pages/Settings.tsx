@@ -800,9 +800,33 @@ export default function Settings() {
       navigate('/settings', { replace: true })
     }
     if (searchParams.get('billing') === 'success') {
-      setToast({ message: 'Subscription activated! Welcome to Pro.', type: 'success' })
+      setToast({ message: 'Payment successful! Activating your subscription…', type: 'success' })
+      const sessionId = searchParams.get('session_id')
       navigate('/settings', { replace: true })
-      if (user) fetchBilling(user.id)
+      if (user) {
+        const userId = user.id
+        ;(async () => {
+          // Directly verify with Stripe so activation works immediately (no webhook timing dependency)
+          if (sessionId) {
+            try {
+              await supabase.functions.invoke('verify-checkout', {
+                body: { session_id: sessionId },
+              })
+            } catch {
+              // If verify fails, fall through to polling
+            }
+          }
+          // Poll until subscription_status flips to 'active' (up to 20s, covers webhook path too)
+          for (let i = 0; i < 10; i++) {
+            await fetchBilling(userId)
+            if (useBillingStore.getState().team?.subscription_status === 'active') {
+              setToast({ message: 'Subscription activated! Welcome to Pro.', type: 'success' })
+              break
+            }
+            await new Promise(r => setTimeout(r, 2000))
+          }
+        })()
+      }
     }
     if (searchParams.get('billing') === 'canceled') {
       setToast({ message: 'Checkout canceled - your trial is still active.', type: 'error' })
@@ -820,6 +844,19 @@ export default function Settings() {
   const handleUpgrade = async () => {
     setUpgradeLoading(true)
     const { url, error } = await startStripeCheckout()
+    if (error === 'already_subscribed') {
+      // DB was out of sync - re-fetch billing so the UI updates to the subscribed state
+      if (user) await fetchBilling(user.id)
+      setToast({ message: 'Your subscription is already active! The page has been refreshed.', type: 'success' })
+      setUpgradeLoading(false)
+      return
+    }
+    if (error === 'session_expired') {
+      // Session is genuinely invalid - sign out and redirect to login for a clean re-auth
+      await signOut()
+      navigate('/login')
+      return
+    }
     if (error || !url) {
       setToast({ message: error ?? 'Could not start checkout. Try again.', type: 'error' })
       setUpgradeLoading(false)
