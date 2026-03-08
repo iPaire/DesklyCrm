@@ -52,16 +52,12 @@ export const useBillingStore = create<BillingState>((set) => ({
       currentTeam = { ...team, subscription_status: 'ended' }
     }
 
-    // Per-member trial: based on their joined_at date.
-    // If joined_at is null (row predates the column), fall back to the user's account creation date.
+    // Per-member trial: based on account creation date (not join date).
+    // A user who existed for 10 days before being invited should not get a fresh 14-day trial.
     let storedMemberJoinedAt: string | null = null
     if (role === 'member') {
-      if (memberJoinedAt) {
-        storedMemberJoinedAt = memberJoinedAt
-      } else {
-        const { data: { user: authUser } } = await supabase.auth.getUser()
-        storedMemberJoinedAt = authUser?.created_at ?? null
-      }
+      const { data: { session } } = await supabase.auth.getSession()
+      storedMemberJoinedAt = session?.user?.created_at ?? memberJoinedAt ?? null
     }
     const memberTrialInfo = storedMemberJoinedAt ? getTrialInfo(storedMemberJoinedAt) : null
 
