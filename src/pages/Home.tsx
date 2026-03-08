@@ -563,7 +563,7 @@ export default function Home() {
             </div>
             <span className="text-sm font-semibold text-gray-900 dark:text-white">Deskly</span>
           </div>
-          <div className="flex items-center gap-5 text-xs text-gray-400 dark:text-gray-500">
+          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-gray-400 dark:text-gray-500">
             <Link to="/privacy" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Privacy</Link>
             <Link to="/terms" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Terms</Link>
             <a href="mailto:support@desklycrm.com" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">support@desklycrm.com</a>
