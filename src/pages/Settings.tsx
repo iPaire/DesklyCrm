@@ -855,12 +855,8 @@ export default function Settings() {
           // Directly verify with Stripe so activation works immediately (no webhook timing dependency)
           if (sessionId) {
             try {
-              const { data: { session: authSession } } = await supabase.auth.getSession()
               await supabase.functions.invoke('verify-checkout', {
                 body: { session_id: sessionId },
-                headers: authSession?.access_token
-                  ? { Authorization: `Bearer ${authSession.access_token}` }
-                  : undefined,
               })
             } catch {
               // If verify fails, fall through to polling

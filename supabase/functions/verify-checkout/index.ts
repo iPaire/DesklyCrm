@@ -22,17 +22,6 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Authenticate the user
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
-    }
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authErr } = await supabase.auth.getUser(token)
-    if (authErr || !user) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
-    }
-
     const { session_id } = await req.json()
     if (!session_id) {
       return new Response(JSON.stringify({ error: 'Missing session_id' }), { status: 400, headers: corsHeaders })
@@ -55,11 +44,16 @@ Deno.serve(async (req) => {
     }
 
     const teamId = session.metadata?.team_id
+    const userId = session.client_reference_id ?? session.metadata?.user_id
     const customerId = session.customer
     const subscriptionId = typeof session.subscription === 'string' ? session.subscription : session.subscription?.id
     const currentPeriodEnd = session.subscription?.current_period_end
       ? new Date(session.subscription.current_period_end * 1000).toISOString()
       : null
+
+    if (!teamId && !userId) {
+      return new Response(JSON.stringify({ error: 'Cannot identify team from session' }), { status: 400, headers: corsHeaders })
+    }
 
     const update = {
       subscription_status: 'active' as const,
@@ -71,7 +65,19 @@ Deno.serve(async (req) => {
     if (teamId) {
       await supabase.from('teams').update(update).eq('id', teamId)
     } else {
-      await supabase.from('teams').update(update).eq('owner_id', user.id)
+      await supabase.from('teams').update(update).eq('owner_id', userId)
+    }
+
+    // Mark all active members of this team as having paid seats
+    const targetTeamId = teamId ?? (
+      userId ? (await supabase.from('teams').select('id').eq('owner_id', userId).maybeSingle()).data?.id : null
+    )
+    if (targetTeamId) {
+      await supabase
+        .from('team_members')
+        .update({ has_paid_seat: true })
+        .eq('team_id', targetTeamId)
+        .eq('status', 'active')
     }
 
     return new Response(JSON.stringify({ ok: true }), {
