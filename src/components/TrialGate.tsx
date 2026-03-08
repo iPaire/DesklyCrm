@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useBillingStore, selectTrialExpired } from '../store/billingStore'
 import { startStripeCheckout } from '../lib/billing'
-import { supabase } from '../lib/supabase'
+import { useNavigate } from 'react-router-dom'
 
 // Pages that remain accessible even after trial expires
 const ALLOWED_PATHS = ['/settings', '/settings/gmail/callback']
@@ -33,6 +33,7 @@ export function TrialGate({ children }: { children: React.ReactNode }) {
 function TrialEndedModal() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const navigate = useNavigate()
   const team = useBillingStore((s) => s.team)
   const seats = team?.seats ?? 1
   const monthlyTotal = seats * 10
@@ -121,12 +122,12 @@ function TrialEndedModal() {
           </a>
         </p>
 
-        {/* Sign out */}
+        {/* Go to settings */}
         <button
-          onClick={() => supabase.auth.signOut()}
+          onClick={() => navigate('/settings')}
           className="w-full mt-3 py-2 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
         >
-          Sign out
+          Go to settings
         </button>
       </div>
     </div>

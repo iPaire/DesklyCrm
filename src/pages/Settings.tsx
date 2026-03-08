@@ -133,6 +133,7 @@ const FeatureList = ({ features }: { features: string[] }) => (
 const MemberRow = ({
   member,
   isCurrentUser,
+  trialExpired,
   onRemove,
   onResend,
   onCancel,
@@ -153,6 +154,7 @@ const MemberRow = ({
 }: {
   member: any
   isCurrentUser: boolean
+  trialExpired?: boolean
   onRemove: () => void
   onResend: () => void
   onCancel: () => void
@@ -200,9 +202,11 @@ const MemberRow = ({
             <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
               member.has_paid_seat
                 ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
-                : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+                : trialExpired
+                  ? 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400'
+                  : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
             }`}>
-              {member.has_paid_seat ? 'Pro' : 'Trial'}
+              {member.has_paid_seat ? 'Pro' : trialExpired ? 'Trial ended' : 'Trial'}
             </span>
           )}
         </div>
@@ -1343,6 +1347,7 @@ export default function Settings() {
                     key={m.id}
                     member={m}
                     isCurrentUser={isMe}
+                    trialExpired={trialInfo?.isExpired}
                     onRemove={() => {
                       if (isMe) handleLeaveTeam()
                       else setConfirmRemoveMember({ id: m.id, email: m.email })
