@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/authStore'
 import { useDarkModeStore } from '../store/darkModeStore'
@@ -86,6 +86,33 @@ export default function Layout() {
   }
 
   const initials = user?.email?.[0].toUpperCase() ?? 'U'
+
+  // Pull-to-refresh
+  const PULL_THRESHOLD = 72
+  const pullStartY = useRef(0)
+  const [pullDistance, setPullDistance] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const onTouchStart = useCallback((e: React.TouchEvent<HTMLElement>) => {
+    const el = e.currentTarget
+    if (el.scrollTop === 0) pullStartY.current = e.touches[0].clientY
+    else pullStartY.current = 0
+  }, [])
+
+  const onTouchMove = useCallback((e: React.TouchEvent<HTMLElement>) => {
+    if (!pullStartY.current) return
+    const dist = e.touches[0].clientY - pullStartY.current
+    if (dist > 0) setPullDistance(Math.min(dist, PULL_THRESHOLD + 20))
+  }, [])
+
+  const onTouchEnd = useCallback(() => {
+    if (pullDistance >= PULL_THRESHOLD) {
+      setRefreshing(true)
+      setTimeout(() => window.location.reload(), 300)
+    } else {
+      setPullDistance(0)
+    }
+  }, [pullDistance])
 
   const sidebarContent = (
     <>
@@ -232,7 +259,26 @@ export default function Layout() {
         </header>
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950">
+        <main
+          className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950 relative"
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+        >
+          {/* Pull-to-refresh indicator */}
+          {(pullDistance > 0 || refreshing) && (
+            <div
+              className="absolute left-0 right-0 flex items-center justify-center z-10 pointer-events-none transition-opacity"
+              style={{ top: Math.min(pullDistance, PULL_THRESHOLD) - 36, opacity: Math.min(pullDistance / PULL_THRESHOLD, 1) }}
+            >
+              <div className={`w-8 h-8 rounded-full bg-white dark:bg-gray-800 shadow-md flex items-center justify-center ${refreshing ? 'animate-spin' : ''}`}
+                style={{ transform: refreshing ? undefined : `rotate(${(pullDistance / PULL_THRESHOLD) * 360}deg)` }}>
+                <svg className="w-4 h-4 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </div>
+            </div>
+          )}
           <TrialGate>
             <Outlet />
           </TrialGate>
