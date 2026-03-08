@@ -8,6 +8,7 @@ interface BillingState {
   members: TeamMember[]
   trialInfo: TrialInfo | null
   memberTrialInfo: TrialInfo | null  // trial personal al userului curent (pt membri)
+  memberJoinedAt: string | null      // raw date for live expiry recomputation
   hasPaidSeat: boolean               // are seat plătit (owner subscribed SAU member.has_paid_seat)
   isOwner: boolean
   isLoading: boolean
@@ -22,6 +23,7 @@ export const useBillingStore = create<BillingState>((set) => ({
   members: [],
   trialInfo: null,
   memberTrialInfo: null,
+  memberJoinedAt: null,
   hasPaidSeat: false,
   isOwner: false,
   isLoading: false,
@@ -47,6 +49,7 @@ export const useBillingStore = create<BillingState>((set) => ({
     const memberTrialInfo = (role === 'member' && memberJoinedAt)
       ? getTrialInfo(memberJoinedAt)
       : null
+    const storedMemberJoinedAt = (role === 'member' && memberJoinedAt) ? memberJoinedAt : null
 
     const activeSeats = members.filter(m => m.status === 'active').length || 1
     const teamWithSeats = activeSeats !== team.seats ? { ...team, seats: activeSeats } : team
@@ -67,7 +70,7 @@ export const useBillingStore = create<BillingState>((set) => ({
       }
     }
 
-    set({ team: teamWithSeats, members, trialInfo, memberTrialInfo, hasPaidSeat, isOwner: role === 'owner', isLoading: false })
+    set({ team: teamWithSeats, members, trialInfo, memberTrialInfo, memberJoinedAt: storedMemberJoinedAt, hasPaidSeat, isOwner: role === 'owner', isLoading: false })
   },
 
   setTeam: (team) => {
@@ -78,18 +81,27 @@ export const useBillingStore = create<BillingState>((set) => ({
 
   setMembers: (members) => set({ members }),
 
-  clearBilling: () => set({ team: null, members: [], trialInfo: null, memberTrialInfo: null, hasPaidSeat: false, isOwner: false, isLoading: false }),
+  clearBilling: () => set({ team: null, members: [], trialInfo: null, memberTrialInfo: null, memberJoinedAt: null, hasPaidSeat: false, isOwner: false, isLoading: false }),
 }))
 
 // Owner: trial expirat și neabonat
 export const selectIsSubscribed = (s: BillingState) => isSubscribed(s.team)
 export const selectTrialExpired = (s: BillingState) => {
   if (s.hasPaidSeat) return false  // has paid seat → never blocked
+  if (!s.team) return false
+
+  // Always check team-level expiry first - if owner's trial/subscription is gone, everyone is locked out
+  const teamTi = getTrialInfo(s.team.trial_start, s.team.trial_extended_days)
+  const teamExpired = teamTi.isExpired && !isSubscribed(s.team)
+
   if (s.isOwner) {
-    // Owner: blocked if team trial expired and not subscribed
-    return s.trialInfo?.isExpired === true && !isSubscribed(s.team)
+    return teamExpired
   } else {
-    // Member: blocked if their personal trial expired and no paid seat
-    return s.memberTrialInfo?.isExpired === true
+    // Member is locked out if the team itself has expired (owner hasn't paid)
+    if (teamExpired) return true
+    // Member is also locked out if their personal member trial has expired
+    if (!s.memberJoinedAt) return false
+    const memberTi = getTrialInfo(s.memberJoinedAt)
+    return memberTi.isExpired
   }
 }

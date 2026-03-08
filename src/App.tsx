@@ -32,20 +32,30 @@ export default function App() {
 
   // Sync auth state and load billing
   useEffect(() => {
+    let pollingInterval: ReturnType<typeof setInterval> | null = null
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       setLoading(false)
-      if (session?.user) fetchBilling(session.user.id)
+      if (session?.user) {
+        fetchBilling(session.user.id)
+        pollingInterval = setInterval(() => fetchBilling(session.user!.id), 60_000)
+      }
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
+      if (pollingInterval) { clearInterval(pollingInterval); pollingInterval = null }
       if (session?.user) {
         fetchBilling(session.user.id)
+        pollingInterval = setInterval(() => fetchBilling(session.user!.id), 60_000)
       } else {
         clearBilling()
       }
     })
-    return () => subscription.unsubscribe()
+    return () => {
+      subscription.unsubscribe()
+      if (pollingInterval) clearInterval(pollingInterval)
+    }
   }, [setUser, setLoading, fetchBilling, clearBilling])
 
   // Follow OS preference changes (only if user hasn't manually set a preference)
