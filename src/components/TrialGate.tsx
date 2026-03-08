@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useBillingStore, selectTrialExpired } from '../store/billingStore'
 import { startStripeCheckout } from '../lib/billing'
+import { supabase } from '../lib/supabase'
 
 // Pages that remain accessible even after trial expires
 const ALLOWED_PATHS = ['/settings', '/settings/gmail/callback']
@@ -119,6 +120,14 @@ function TrialEndedModal() {
             Email us for a 7-day extension
           </a>
         </p>
+
+        {/* Sign out */}
+        <button
+          onClick={() => supabase.auth.signOut()}
+          className="w-full mt-3 py-2 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+        >
+          Sign out
+        </button>
       </div>
     </div>
   )
