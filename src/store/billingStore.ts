@@ -45,11 +45,24 @@ export const useBillingStore = create<BillingState>((set) => ({
     const { members } = await getTeamMembers(team.id)
     const trialInfo = getTrialInfo(team.trial_start, team.trial_extended_days)
 
-    // Per-member trial: based on their joined_at date
-    const memberTrialInfo = (role === 'member' && memberJoinedAt)
-      ? getTrialInfo(memberJoinedAt)
-      : null
-    const storedMemberJoinedAt = (role === 'member' && memberJoinedAt) ? memberJoinedAt : null
+    // When trial expires, mark it in DB so status is the source of truth
+    if (trialInfo.isExpired && team.subscription_status === 'trialing') {
+      supabase.from('teams').update({ subscription_status: 'ended' }).eq('id', team.id)
+      team = { ...team, subscription_status: 'ended' }
+    }
+
+    // Per-member trial: based on their joined_at date.
+    // If joined_at is null (row predates the column), fall back to the user's account creation date.
+    let storedMemberJoinedAt: string | null = null
+    if (role === 'member') {
+      if (memberJoinedAt) {
+        storedMemberJoinedAt = memberJoinedAt
+      } else {
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        storedMemberJoinedAt = authUser?.created_at ?? null
+      }
+    }
+    const memberTrialInfo = storedMemberJoinedAt ? getTrialInfo(storedMemberJoinedAt) : null
 
     const activeSeats = members.filter(m => m.status === 'active').length || 1
     const teamWithSeats = activeSeats !== team.seats ? { ...team, seats: activeSeats } : team
@@ -91,8 +104,9 @@ export const selectTrialExpired = (s: BillingState) => {
   if (!s.team) return false
 
   // Always check team-level expiry first - if owner's trial/subscription is gone, everyone is locked out
+  const teamEnded = s.team.subscription_status === 'ended'
   const teamTi = getTrialInfo(s.team.trial_start, s.team.trial_extended_days)
-  const teamExpired = teamTi.isExpired && !isSubscribed(s.team)
+  const teamExpired = teamEnded || (teamTi.isExpired && !isSubscribed(s.team))
 
   if (s.isOwner) {
     return teamExpired

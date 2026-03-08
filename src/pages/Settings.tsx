@@ -14,6 +14,7 @@ import {
   findUserIdByEmail,
   getMemberActivity,
   activateMemberSeat,
+  getTrialInfo,
   type TeamActivityLog,
 } from '../lib/billing'
 import { Toast } from '../components/Toast'
@@ -809,7 +810,14 @@ export default function Settings() {
   const [searchParams] = useSearchParams()
   const user    = useAuthStore(s => s.user)
   const signOut = useAuthStore(s => s.signOut)
-  const { team, members, trialInfo, isOwner, fetchBilling, setMembers } = useBillingStore()
+  const { team, members, isOwner, fetchBilling, setMembers } = useBillingStore()
+  const memberJoinedAt = useBillingStore((s) => s.memberJoinedAt)
+  // For owners: team trial. For members: their own personal trial (based on joined_at)
+  const trialInfo = useMemo(() => {
+    if (!team) return null
+    if (!isOwner && memberJoinedAt) return getTrialInfo(memberJoinedAt)
+    return getTrialInfo(team.trial_start, team.trial_extended_days)
+  }, [team, isOwner, memberJoinedAt])
   const subscribed = useBillingStore(selectIsSubscribed)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
   const [upgradeLoading, setUpgradeLoading] = useState(false)
@@ -1068,7 +1076,7 @@ export default function Settings() {
   }
 
   // Determine progress bar status for trial
-  const trialStatus = trialInfo?.isExpired
+  const trialStatus = (trialInfo?.isExpired || team?.subscription_status === 'ended')
     ? 'expired'
     : trialInfo?.daysRemaining && trialInfo.daysRemaining <= 3
       ? 'warning'

@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useBillingStore, selectTrialExpired } from '../store/billingStore'
-import { startStripeCheckout } from '../lib/billing'
+import { TRIAL_DAYS, startStripeCheckout } from '../lib/billing'
 import { useNavigate } from 'react-router-dom'
 
 // Pages that remain accessible even after trial expires
@@ -10,6 +10,29 @@ const ALLOWED_PATHS = ['/settings', '/settings/gmail/callback']
 export function TrialGate({ children }: { children: React.ReactNode }) {
   const location = useLocation()
   const trialExpired = useBillingStore(selectTrialExpired)
+  const team = useBillingStore((s) => s.team)
+  const hasPaidSeat = useBillingStore((s) => s.hasPaidSeat)
+  const isOwner = useBillingStore((s) => s.isOwner)
+  const memberJoinedAt = useBillingStore((s) => s.memberJoinedAt)
+
+  // Force a re-render at the exact moment the trial expires so selectTrialExpired
+  // re-evaluates with fresh Date.now() - without needing a page refresh or DB re-fetch
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    if (!team || hasPaidSeat) return
+
+    const teamExpiryMs = new Date(team.trial_start).getTime()
+      + (TRIAL_DAYS + (team.trial_extended_days ?? 0)) * 86_400_000
+    const memberExpiryMs = (!isOwner && memberJoinedAt)
+      ? new Date(memberJoinedAt).getTime() + TRIAL_DAYS * 86_400_000
+      : Infinity
+
+    const msUntilExpiry = Math.min(teamExpiryMs, memberExpiryMs) - Date.now()
+    if (msUntilExpiry <= 0) return // already expired, selector handles it
+
+    const id = setTimeout(() => setTick((n) => n + 1), msUntilExpiry)
+    return () => clearTimeout(id)
+  }, [team, hasPaidSeat, isOwner, memberJoinedAt])
 
   // Allow access to settings so the user can upgrade
   const isAllowed = ALLOWED_PATHS.some((p) => location.pathname.startsWith(p))
