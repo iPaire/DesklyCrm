@@ -375,7 +375,7 @@ async function getFreshToken(): Promise<string | null> {
 export async function checkAndRestoreSubscription(): Promise<{ restored: boolean }> {
   const token = await getFreshToken()
   if (!token) return { restored: false }
-  const { data, error } = await supabase.functions.invoke('stripe-checkout', {
+  const { error } = await supabase.functions.invoke('stripe-checkout', {
     body: { check_only: true },
     headers: { Authorization: `Bearer ${token}` },
   })
