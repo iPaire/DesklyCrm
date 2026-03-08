@@ -60,12 +60,13 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Team not found' }), { status: 404, headers: corsHeaders })
     }
 
-    // Count active members
+    // Count only members with paid seats
     const { count } = await supabase
       .from('team_members')
       .select('*', { count: 'exact', head: true })
       .eq('team_id', team.id as string)
       .eq('status', 'active')
+      .eq('has_paid_seat', true)
 
     const seats = Math.max(1, count ?? 1)
 

@@ -13,6 +13,7 @@ import {
   getStripePortalUrl,
   findUserIdByEmail,
   getMemberActivity,
+  activateMemberSeat,
   type TeamActivityLog,
 } from '../lib/billing'
 import { Toast } from '../components/Toast'
@@ -137,6 +138,7 @@ const MemberRow = ({
   onCancel,
   onCopyLink,
   onViewActivity,
+  onActivateSeat,
   isRemoving,
   isResending,
   recentlyResent,
@@ -146,6 +148,8 @@ const MemberRow = ({
   showCancel,
   showCopyLink,
   showActivity,
+  showActivateSeat,
+  isActivating,
 }: {
   member: any
   isCurrentUser: boolean
@@ -154,6 +158,7 @@ const MemberRow = ({
   onCancel: () => void
   onCopyLink?: () => void
   onViewActivity?: () => void
+  onActivateSeat?: () => void
   isRemoving: boolean
   isResending: boolean
   recentlyResent: boolean
@@ -163,6 +168,8 @@ const MemberRow = ({
   showCancel: boolean
   showCopyLink?: boolean
   showActivity?: boolean
+  showActivateSeat?: boolean
+  isActivating?: boolean
 }) => {
   const isOwnerRow = member.role === 'owner'
   const initial = member.email[0].toUpperCase()
@@ -189,6 +196,15 @@ const MemberRow = ({
           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusColor}`}>
             {member.status === 'active' ? 'Active' : member.status === 'denied' ? 'Denied' : 'Pending'}
           </span>
+          {!isOwnerRow && (
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+              member.has_paid_seat
+                ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+                : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+            }`}>
+              {member.has_paid_seat ? 'Pro' : 'Trial'}
+            </span>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
@@ -201,6 +217,23 @@ const MemberRow = ({
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
             </svg>
+          </button>
+        )}
+        {showActivateSeat && (
+          <button
+            onClick={onActivateSeat}
+            disabled={isActivating}
+            className="px-3 py-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5"
+            title="Activate paid seat for this member"
+          >
+            {isActivating ? (
+              <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            {isActivating ? '…' : 'Activate'}
           </button>
         )}
         {showLeave && (
@@ -786,6 +819,7 @@ export default function Settings() {
   const [resendingId, setResendingId] = useState<string | null>(null)
   const [confirmRemoveMember, setConfirmRemoveMember] = useState<{ id: string; email: string } | null>(null)
   const [activityMember, setActivityMember] = useState<{ email: string; user_id: string | null } | null>(null)
+  const [activatingId, setActivatingId] = useState<string | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [deleteLoading, setDeleteLoading] = useState(false)
@@ -965,6 +999,19 @@ export default function Settings() {
       setMembers(members.filter(m => m.id !== memberId))
     }
     setRemovingId(null)
+  }
+
+  const handleActivateSeat = async (memberId: string) => {
+    if (!team || !user) return
+    setActivatingId(memberId)
+    const { error } = await activateMemberSeat(team.id, memberId)
+    if (error) {
+      setToast({ message: error, type: 'error' })
+    } else {
+      setMembers(members.map(m => m.id === memberId ? { ...m, has_paid_seat: true } : m))
+      setToast({ message: 'Seat activat! Membrul are acum acces Pro.', type: 'success' })
+    }
+    setActivatingId(null)
   }
 
   const handleLeaveTeam = async () => {
@@ -1305,6 +1352,7 @@ export default function Settings() {
                       setToast({ message: `Link copiat pentru ${m.email}!`, type: 'success' })
                     }}
                     onViewActivity={() => setActivityMember({ email: m.email, user_id: m.user_id })}
+                    onActivateSeat={() => handleActivateSeat(m.id)}
                     isRemoving={removingId === m.id}
                     isResending={resendingId === m.id}
                     recentlyResent={recentlyResentIds.has(m.id)}
@@ -1314,6 +1362,8 @@ export default function Settings() {
                     showCancel={!isMe && isPending && isOwner}
                     showCopyLink={!isMe && isPending && isOwner}
                     showActivity={isOwner && !isMe && m.status === 'active'}
+                    showActivateSeat={isOwner && !isOwnerRow && m.status === 'active' && !m.has_paid_seat && subscribed}
+                    isActivating={activatingId === m.id}
                   />
                 )
               })}

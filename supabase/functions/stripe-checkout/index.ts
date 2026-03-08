@@ -9,7 +9,7 @@ const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY')!
 const stripePriceId = Deno.env.get('STRIPE_PRICE_ID')!
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const appUrl = Deno.env.get('APP_URL') ?? 'https://desklycrm.com'
+// appUrl is set below after parsing the request body
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
@@ -50,6 +50,11 @@ Deno.serve(async (req) => {
         headers: corsHeaders,
       })
     }
+
+    // Parse request body
+    const body = await req.json().catch(() => ({}))
+    const appUrl = (body?.origin as string | undefined) ?? Deno.env.get('APP_URL') ?? 'https://desklycrm.com'
+    const checkOnly = body?.check_only === true  // if true: only detect & sync, don't create checkout
 
     // Get the user's team (maybeSingle avoids throwing when no row found)
     const { data: team } = await supabase
@@ -121,6 +126,13 @@ Deno.serve(async (req) => {
           })
         }
       }
+    }
+
+    // If only checking (auto-restore at login), stop here - no subscription found
+    if (checkOnly) {
+      return new Response(JSON.stringify({ subscribed: false }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
     }
 
     // Always count live active members so checkout quantity is never stale

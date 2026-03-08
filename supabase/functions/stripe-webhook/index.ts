@@ -67,6 +67,18 @@ Deno.serve(async (req) => {
         } else if (userId) {
           await supabase.from('teams').update(checkoutUpdate).eq('owner_id', userId)
         }
+
+        // Mark all active members of this team as having paid seats
+        const targetTeamId = teamId ?? (
+          userId ? (await supabase.from('teams').select('id').eq('owner_id', userId).maybeSingle()).data?.id : null
+        )
+        if (targetTeamId) {
+          await supabase
+            .from('team_members')
+            .update({ has_paid_seat: true })
+            .eq('team_id', targetTeamId)
+            .eq('status', 'active')
+        }
         break
       }
 

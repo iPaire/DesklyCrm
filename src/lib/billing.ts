@@ -28,6 +28,7 @@ export interface TeamMember {
   invite_token: string
   invited_at: string
   joined_at: string | null
+  has_paid_seat: boolean
 }
 
 export interface TeamActivityLog {
@@ -128,20 +129,17 @@ export async function getTeam(userId: string) {
  */
 export async function getTeamAndRole(
   userId: string,
-): Promise<{ team: Team | null; role: 'owner' | 'member' | null; membershipFound: boolean }> {
-  // Get ALL active memberships for this user
+): Promise<{ team: Team | null; role: 'owner' | 'member' | null; membershipFound: boolean; hasPaidSeat: boolean; memberJoinedAt: string | null }> {
   const { data: memberships } = await supabase
     .from('team_members')
-    .select('team_id, role')
+    .select('team_id, role, has_paid_seat, joined_at')
     .eq('user_id', userId)
     .eq('status', 'active')
 
   if (!memberships || memberships.length === 0) {
-    return { team: null, role: null, membershipFound: false }
+    return { team: null, role: null, membershipFound: false, hasPaidSeat: false, memberJoinedAt: null }
   }
 
-  // Prefer 'member' role - means the user was invited into someone else's team.
-  // Fall back to 'owner' (their own auto-created team) if no other membership exists.
   const membership = memberships.find(m => m.role === 'member') ?? memberships[0]
 
   const { data: team } = await supabase
@@ -150,10 +148,17 @@ export async function getTeamAndRole(
     .eq('id', membership.team_id)
     .single()
 
+  // Owner always has paid seat if team is subscribed
+  const hasPaidSeat = membership.role === 'owner'
+    ? (team as Team | null)?.subscription_status === 'active'
+    : (membership.has_paid_seat ?? false)
+
   return {
     team: team as Team | null,
     role: membership.role as 'owner' | 'member',
     membershipFound: true,
+    hasPaidSeat,
+    memberJoinedAt: membership.role === 'member' ? (membership.joined_at ?? null) : null,
   }
 }
 
@@ -365,6 +370,24 @@ async function getFreshToken(): Promise<string | null> {
   return refreshed.session.access_token
 }
 
+/** Silently checks Stripe for an existing active subscription and fixes the DB if out of sync.
+ *  Called automatically at login - never creates a checkout session. */
+export async function checkAndRestoreSubscription(): Promise<{ restored: boolean }> {
+  const token = await getFreshToken()
+  if (!token) return { restored: false }
+  const { data, error } = await supabase.functions.invoke('stripe-checkout', {
+    body: { check_only: true },
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (error) {
+    let detail = ''
+    try { const b = await (error as any).context?.json(); detail = b?.error ?? '' } catch {}
+    return { restored: detail === 'already_subscribed' }
+  }
+  // data.subscribed === false means no subscription found - nothing to restore
+  return { restored: false }
+}
+
 // ─── Stripe Checkout ─────────────────────────────────────────────────────────
 
 export async function startStripeCheckout(): Promise<{ url: string | null; error: string | null }> {
@@ -372,7 +395,7 @@ export async function startStripeCheckout(): Promise<{ url: string | null; error
   if (!token) return { url: null, error: 'session_expired' }
 
   const { data, error } = await supabase.functions.invoke('stripe-checkout', {
-    body: {},
+    body: { origin: window.location.origin },
     headers: { Authorization: `Bearer ${token}` },
   })
   if (error) {
@@ -394,4 +417,21 @@ export async function startStripeCheckout(): Promise<{ url: string | null; error
     return { url: null, error: detail ?? 'Failed to start checkout' }
   }
   return { url: data?.url ?? null, error: null }
+}
+
+/** Activate a paid seat for a specific team member. If subscribed, prorates Stripe immediately. */
+export async function activateMemberSeat(
+  teamId: string,
+  memberId: string,
+): Promise<{ error: string | null }> {
+  // Mark member as having a paid seat
+  const { error: updateErr } = await supabase
+    .from('team_members')
+    .update({ has_paid_seat: true })
+    .eq('id', memberId)
+  if (updateErr) return { error: updateErr.message }
+
+  // Sync Stripe subscription quantity (prorated charge happens automatically)
+  await syncSubscriptionQuantity(teamId)
+  return { error: null }
 }
