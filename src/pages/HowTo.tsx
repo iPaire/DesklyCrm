@@ -5,44 +5,6 @@ import PublicLayout from '../components/PublicLayout'
 // e.g. if your URL is https://www.youtube.com/watch?v=dQw4w9WgXcQ → videoId = 'dQw4w9WgXcQ'
 const INTRO_VIDEO_ID = ''
 
-const steps = [
-  {
-    step: '01',
-    title: 'Create your account',
-    desc: 'Sign up for free - no credit card required. Takes less than a minute.',
-    icon: '👤',
-  },
-  {
-    step: '02',
-    title: 'Add your contacts',
-    desc: 'Import from CSV or add contacts manually. Store names, emails, phone numbers and custom fields.',
-    icon: '📋',
-  },
-  {
-    step: '03',
-    title: 'Create your first deal',
-    desc: 'Open the Deals page and drag cards across the Kanban pipeline - from Lead all the way to Closed Won.',
-    icon: '💼',
-  },
-  {
-    step: '04',
-    title: 'Connect Gmail',
-    desc: 'Go to Settings → Gmail and connect your inbox. Emails sync automatically to the right contacts.',
-    icon: '📧',
-  },
-  {
-    step: '05',
-    title: 'Enable automations',
-    desc: 'Turn on smart automations in Settings - like auto-creating tasks when a deal reaches Proposal stage.',
-    icon: '⚙️',
-  },
-  {
-    step: '06',
-    title: 'Invite your team',
-    desc: 'Share access with teammates so everyone stays in sync on contacts and deals.',
-    icon: '👥',
-  },
-]
 
 export default function HowTo() {
   return (
@@ -92,23 +54,6 @@ export default function HowTo() {
               </div>
             </div>
           )}
-        </div>
-
-        {/* Step-by-step guide */}
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-8 text-center">Step-by-step guide</h2>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {steps.map(item => (
-              <div key={item.step} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-2xl">{item.icon}</span>
-                  <span className="text-xs font-black text-gray-200 dark:text-gray-700 tabular-nums">{item.step}</span>
-                </div>
-                <h3 className="text-sm font-bold text-gray-900 dark:text-white">{item.title}</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{item.desc}</p>
-              </div>
-            ))}
-          </div>
         </div>
 
         {/* CTA */}

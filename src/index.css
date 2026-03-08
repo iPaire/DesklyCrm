@@ -15,4 +15,33 @@
   body {
     @apply bg-gray-50 dark:bg-gray-950;
   }
+
+  /* Global scrollbar styles */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #9ca3af transparent;
+  }
+  .dark * {
+    scrollbar-color: #4b5563 transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: #9ca3af;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: #6b7280;
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background-color: #4b5563;
+  }
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background-color: #6b7280;
+  }
 }

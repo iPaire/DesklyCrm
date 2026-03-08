@@ -245,48 +245,32 @@ function DealCard({ deal, contacts, onEdit, onDelete }: DealCardProps) {
   )
 }
 
-// ─── Mobile deal card (long press + swipe) ────────────────────────────────────
+// ─── Mobile deal card (long press → held, tap column to drop) ─────────────────
 
 interface MobileDealCardProps {
   deal: Deal
   contacts: Contact[]
   onEdit: (d: Deal) => void
   onDelete: (d: Deal) => void
-  onMoveStage: (deal: Deal, direction: 'prev' | 'next') => void
   isSelected: boolean
   onSelect: (id: string) => void
   onDeselect: () => void
 }
 
-function MobileDealCard({ deal, contacts, onEdit, onDelete, onMoveStage, isSelected, onSelect, onDeselect }: MobileDealCardProps) {
-  const cardRef         = useRef<HTMLDivElement>(null)
-  const longPressRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const touchStartX     = useRef(0)
-  const touchStartY     = useRef(0)
-  const touchMoved      = useRef(false)
-  const isLongPressed   = useRef(false)
-
-  // Non-passive touchmove to prevent board scroll during swipe
-  useEffect(() => {
-    const el = cardRef.current
-    if (!el) return
-    const prevent = (e: TouchEvent) => {
-      if (isLongPressed.current) e.preventDefault()
-    }
-    el.addEventListener('touchmove', prevent, { passive: false })
-    return () => el.removeEventListener('touchmove', prevent)
-  }, [])
+function MobileDealCard({ deal, contacts, onEdit, onDelete, isSelected, onSelect, onDeselect }: MobileDealCardProps) {
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const touchStartX  = useRef(0)
+  const touchStartY  = useRef(0)
+  const touchMoved   = useRef(false)
 
   const handleTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0]
-    touchStartX.current   = t.clientX
-    touchStartY.current   = t.clientY
-    touchMoved.current    = false
-    isLongPressed.current = false
+    touchStartX.current = t.clientX
+    touchStartY.current = t.clientY
+    touchMoved.current  = false
 
     longPressRef.current = setTimeout(() => {
       if (!touchMoved.current) {
-        isLongPressed.current = true
         onSelect(deal.id)
         try { navigator.vibrate(50) } catch { /* unsupported */ }
       }
@@ -294,7 +278,6 @@ function MobileDealCard({ deal, contacts, onEdit, onDelete, onMoveStage, isSelec
   }
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (isLongPressed.current) return // handled by native listener
     const dx = Math.abs(e.touches[0].clientX - touchStartX.current)
     const dy = Math.abs(e.touches[0].clientY - touchStartY.current)
     if (dx > 8 || dy > 8) {
@@ -306,46 +289,26 @@ function MobileDealCard({ deal, contacts, onEdit, onDelete, onMoveStage, isSelec
     }
   }
 
-  const handleTouchEnd = (e: React.TouchEvent) => {
+  const handleTouchEnd = () => {
     if (longPressRef.current) {
       clearTimeout(longPressRef.current)
       longPressRef.current = null
     }
-
-    const dx  = e.changedTouches[0].clientX - touchStartX.current
-    const ady = Math.abs(e.changedTouches[0].clientY - touchStartY.current)
-
-    if (isLongPressed.current) {
-      // Swipe detected after long press
-      if (Math.abs(dx) > 60 && Math.abs(dx) > ady) {
-        onMoveStage(deal, dx > 0 ? 'next' : 'prev')
-      }
-      onDeselect()
-      isLongPressed.current = false
-      return
-    }
-
-    // Quick tap (no movement, no long press)
     if (!touchMoved.current) {
-      if (isSelected) {
-        onDeselect()
-      } else {
-        onEdit(deal)
-      }
+      if (isSelected) onDeselect()
+      else onEdit(deal)
     }
   }
 
-  const contact  = contacts.find(c => c.id === deal.contact_id)
-  const cfg      = CFG[deal.stage]
-  const stageIdx = STAGES.findIndex(s => s.id === deal.stage)
+  const contact = contacts.find(c => c.id === deal.contact_id)
+  const cfg     = CFG[deal.stage]
 
   return (
     <div
-      ref={cardRef}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      className={`transition-transform duration-200 ${isSelected ? 'scale-[1.02]' : ''}`}
+      className={`transition-all duration-200 ${isSelected ? 'scale-[1.02] opacity-60' : ''}`}
     >
       <div
         className={`
@@ -357,34 +320,18 @@ function MobileDealCard({ deal, contacts, onEdit, onDelete, onMoveStage, isSelec
           ${isSelected ? 'ring-2 ring-primary-500/40 shadow-lg' : ''}
         `}
       >
-        {/* Header row */}
         <div className="flex items-start justify-between gap-2 mb-1.5">
           <p className="text-[13px] font-semibold text-gray-900 dark:text-white leading-snug flex-1">
             {deal.name}
           </p>
-          {isSelected ? (
-            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-              {stageIdx > 0 && (
-                <span className="text-[10px] font-medium text-primary-500">
-                  ← {STAGES[stageIdx - 1].label}
-                </span>
-              )}
-              {stageIdx < STAGES.length - 1 && (
-                <span className="text-[10px] font-medium text-primary-500">
-                  {STAGES[stageIdx + 1].label} →
-                </span>
-              )}
-            </div>
-          ) : (
-            <svg className="w-3 h-3 text-gray-300 dark:text-gray-600 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <circle cx="7"  cy="4"  r="1.5" />
-              <circle cx="13" cy="4"  r="1.5" />
-              <circle cx="7"  cy="10" r="1.5" />
-              <circle cx="13" cy="10" r="1.5" />
-              <circle cx="7"  cy="16" r="1.5" />
-              <circle cx="13" cy="16" r="1.5" />
-            </svg>
-          )}
+          <svg className="w-3 h-3 text-gray-300 dark:text-gray-600 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+            <circle cx="7"  cy="4"  r="1.5" />
+            <circle cx="13" cy="4"  r="1.5" />
+            <circle cx="7"  cy="10" r="1.5" />
+            <circle cx="13" cy="10" r="1.5" />
+            <circle cx="7"  cy="16" r="1.5" />
+            <circle cx="13" cy="16" r="1.5" />
+          </svg>
         </div>
 
         {deal.value > 0 && (
@@ -404,11 +351,10 @@ function MobileDealCard({ deal, contacts, onEdit, onDelete, onMoveStage, isSelec
           </div>
         )}
 
-        {/* Selected state footer */}
         {isSelected && (
           <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
             <p className="text-[10px] text-primary-400 dark:text-primary-500">
-              Swipe ← → to move stage
+              Scroll · tap column to move · tap here to cancel
             </p>
             <button
               onTouchEnd={e => { e.stopPropagation(); onDelete(deal); onDeselect() }}
@@ -527,17 +473,19 @@ interface MobileColumnProps {
   onDelete: (d: Deal) => void
   onAdd: (stage: StageId) => void
   selectedDealId: string | null
+  selectedDeal: Deal | null
   onSelect: (id: string) => void
   onDeselect: () => void
-  onMoveStage: (deal: Deal, direction: 'prev' | 'next') => void
+  onDropDeal: (targetStage: StageId) => void
 }
 
 function MobileKanbanColumn({
   stage, dealIds, allDeals, contacts,
   onEdit, onDelete, onAdd,
-  selectedDealId, onSelect, onDeselect, onMoveStage,
+  selectedDealId, selectedDeal, onSelect, onDeselect, onDropDeal,
 }: MobileColumnProps) {
-  const cfg = CFG[stage.id]
+  const cfg     = CFG[stage.id]
+  const canDrop = selectedDeal !== null && selectedDeal.stage !== stage.id
 
   const stageDeals = dealIds
     .map(id => allDeals.find(d => d.id === id))
@@ -546,7 +494,7 @@ function MobileKanbanColumn({
   const totalValue = stageDeals.reduce((s, d) => s + d.value, 0)
 
   return (
-    <div className={`w-[264px] shrink-0 flex flex-col rounded-2xl ${cfg.column} transition-colors duration-150`}>
+    <div className={`w-[264px] shrink-0 flex flex-col rounded-2xl ${canDrop ? cfg.columnOver : cfg.column} transition-colors duration-150`}>
       <div className="px-3.5 pt-3.5 pb-2.5 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -564,6 +512,14 @@ function MobileKanbanColumn({
             {formatCurrency(totalValue)}
           </p>
         )}
+        {canDrop && (
+          <button
+            onClick={e => { e.stopPropagation(); onDropDeal(stage.id) }}
+            className="mt-2 w-full py-1.5 rounded-lg border-2 border-dashed border-primary-400 dark:border-primary-600 bg-primary-50/60 dark:bg-primary-950/40 text-[11px] font-semibold text-primary-600 dark:text-primary-400 active:bg-primary-100 dark:active:bg-primary-900/50 transition-colors"
+          >
+            Move here
+          </button>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-1 space-y-2 scrollbar-thin">
@@ -574,7 +530,6 @@ function MobileKanbanColumn({
             contacts={contacts}
             onEdit={onEdit}
             onDelete={onDelete}
-            onMoveStage={onMoveStage}
             isSelected={selectedDealId === deal.id}
             onSelect={onSelect}
             onDeselect={onDeselect}
@@ -582,8 +537,15 @@ function MobileKanbanColumn({
         ))}
 
         {dealIds.length === 0 && (
-          <div className="flex items-center justify-center py-8">
-            <p className="text-xs text-gray-400 dark:text-gray-600">No deals</p>
+          <div
+            className="flex items-center justify-center py-8"
+            onClick={canDrop ? e => { e.stopPropagation(); onDropDeal(stage.id) } : undefined}
+          >
+            {canDrop ? (
+              <p className="text-xs text-primary-400 dark:text-primary-500 font-medium">Tap to move here</p>
+            ) : (
+              <p className="text-xs text-gray-400 dark:text-gray-600">No deals</p>
+            )}
           </div>
         )}
       </div>
@@ -766,34 +728,27 @@ export default function Deals() {
     setActiveId(null)
   }
 
-  // ── Mobile move stage ──────────────────────────────────────────────────────
-  const handleMoveStage = async (deal: Deal, direction: 'prev' | 'next') => {
-    const stageIdx = STAGES.findIndex(s => s.id === deal.stage)
-    const newIdx   = direction === 'next' ? stageIdx + 1 : stageIdx - 1
-
-    if (newIdx < 0 || newIdx >= STAGES.length) {
-      setToast({ message: direction === 'next' ? 'Already at last stage' : 'Already at first stage', type: 'error' })
-      return
-    }
-
-    const newStage = STAGES[newIdx].id
+  // ── Mobile move to stage ───────────────────────────────────────────────────
+  const handleMoveDealToStage = async (deal: Deal, targetStage: StageId) => {
+    if (deal.stage === targetStage) return
+    setSelectedDealId(null)
 
     const { error } = await supabase
       .from('deals')
-      .update({ stage: newStage })
+      .update({ stage: targetStage })
       .eq('id', deal.id)
 
     if (!error) {
-      const updatedDeal = { ...deal, stage: newStage }
+      const updatedDeal = { ...deal, stage: targetStage }
       setDeals(prev => {
         const next = prev.map(d => d.id === deal.id ? updatedDeal : d)
         setItems(buildItems(next))
         return next
       })
-      setToast({ message: `Moved to ${STAGES[newIdx].label}`, type: 'success' })
-      if (team && user) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'stage_changed', entityType: 'deal', entityId: deal.id, entityName: deal.name, details: { from: deal.stage, to: newStage } })
+      setToast({ message: `Moved to ${STAGES.find(s => s.id === targetStage)?.label ?? targetStage}`, type: 'success' })
+      if (team && user) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'stage_changed', entityType: 'deal', entityId: deal.id, entityName: deal.name, details: { from: deal.stage, to: targetStage } })
 
-      if (newStage === 'proposal' && user && team) {
+      if (targetStage === 'proposal' && user && team) {
         const automations = await getTeamAutomations(team.id)
         if (isEnabled(automations, 'deal_proposal_task')) {
           await runDealProposalTask(updatedDeal, contacts, user.id)
@@ -860,6 +815,9 @@ export default function Deals() {
     setIsDeleting(false)
     setDeleteTarget(null)
   }
+
+  // ── Selected deal (mobile) ─────────────────────────────────────────────────
+  const selectedDeal = selectedDealId ? deals.find(d => d.id === selectedDealId) ?? null : null
 
   // ── Summary stats ──────────────────────────────────────────────────────────
   const pipeline = deals
@@ -947,7 +905,7 @@ export default function Deals() {
       {/* ── Board ── */}
       <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden p-5">
         {isMobile ? (
-          /* Mobile: no DnD, long press + swipe */
+          /* Mobile: long press to hold, scroll freely, tap column header to drop */
           <div
             className="flex gap-3 h-full"
             onClick={() => setSelectedDealId(null)}
@@ -963,9 +921,13 @@ export default function Deals() {
                 onDelete={setDeleteTarget}
                 onAdd={openAdd}
                 selectedDealId={selectedDealId}
+                selectedDeal={selectedDeal}
                 onSelect={setSelectedDealId}
                 onDeselect={() => setSelectedDealId(null)}
-                onMoveStage={handleMoveStage}
+                onDropDeal={targetStage => {
+                  const deal = deals.find(d => d.id === selectedDealId)
+                  if (deal) handleMoveDealToStage(deal, targetStage)
+                }}
               />
             ))}
           </div>
