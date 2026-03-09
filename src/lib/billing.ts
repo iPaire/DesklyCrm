@@ -439,9 +439,13 @@ export async function activateMemberSeat(
 ): Promise<{ error: string | null }> {
   // 1. Update Stripe quantity first - this triggers the prorated charge.
   //    Only proceed if Stripe confirms success.
+  const token = await getFreshToken()
+  if (!token) return { error: 'session_expired' }
+
   try {
     const { data, error: fnErr } = await supabase.functions.invoke('update-subscription', {
       body: { team_id: teamId },
+      headers: { Authorization: `Bearer ${token}` },
     })
     if (fnErr) {
       let detail = fnErr.message
