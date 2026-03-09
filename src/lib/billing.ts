@@ -431,19 +431,30 @@ export async function startStripeCheckout(): Promise<{ url: string | null; error
   return { url: data?.url ?? null, error: null }
 }
 
-/** Activate a paid seat for a specific team member. If subscribed, prorates Stripe immediately. */
+/** Activate a paid seat for a specific team member. If subscribed, prorates Stripe immediately.
+ *  Stripe is charged FIRST - only if it succeeds is the DB seat marked as paid. */
 export async function activateMemberSeat(
   teamId: string,
   memberId: string,
 ): Promise<{ error: string | null }> {
-  // Mark member as having a paid seat
+  // 1. Update Stripe quantity first - this triggers the prorated charge.
+  //    Only proceed if Stripe confirms success.
+  try {
+    const { data, error: fnErr } = await supabase.functions.invoke('update-subscription', {
+      body: { team_id: teamId },
+    })
+    if (fnErr) return { error: fnErr.message ?? 'Failed to update subscription in Stripe' }
+    if (data?.error) return { error: data.error }
+  } catch (err) {
+    return { error: String(err) }
+  }
+
+  // 2. Stripe confirmed - now mark the member as having a paid seat.
   const { error: updateErr } = await supabase
     .from('team_members')
     .update({ has_paid_seat: true })
     .eq('id', memberId)
   if (updateErr) return { error: updateErr.message }
 
-  // Sync Stripe subscription quantity (prorated charge happens automatically)
-  await syncSubscriptionQuantity(teamId)
   return { error: null }
 }
