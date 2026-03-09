@@ -443,7 +443,14 @@ export async function activateMemberSeat(
     const { data, error: fnErr } = await supabase.functions.invoke('update-subscription', {
       body: { team_id: teamId },
     })
-    if (fnErr) return { error: fnErr.message ?? 'Failed to update subscription in Stripe' }
+    if (fnErr) {
+      let detail = fnErr.message
+      try {
+        const body = await (fnErr as any).context?.json()
+        if (body) detail = body.error ?? body.message ?? detail
+      } catch {}
+      return { error: detail ?? 'Failed to update subscription in Stripe' }
+    }
     if (data?.error) return { error: data.error }
   } catch (err) {
     return { error: String(err) }
