@@ -810,7 +810,7 @@ export default function Settings() {
   const [searchParams] = useSearchParams()
   const user    = useAuthStore(s => s.user)
   const signOut = useAuthStore(s => s.signOut)
-  const { team, members, isOwner, fetchBilling, setMembers } = useBillingStore()
+  const { team, members, isOwner, hasPaidSeat, fetchBilling, setMembers } = useBillingStore()
   const memberJoinedAt = useBillingStore((s) => s.memberJoinedAt)
   // For owners: team trial. For members: their own personal trial (based on joined_at)
   const trialInfo = useMemo(() => {
@@ -1155,15 +1155,15 @@ export default function Settings() {
                 <p className="text-base font-semibold text-gray-900 dark:text-white">{displayName}</p>
               )}
               <p className={`${displayName ? 'text-sm text-gray-500 dark:text-gray-400' : 'text-base font-semibold text-gray-900 dark:text-white'}`}>{user?.email}</p>
-              {subscribed ? (
-                <span className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-3 py-1 rounded-full mt-1">
-                  Pro
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-sm font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 px-3 py-1 rounded-full mt-1">
-                  Free Trial {trialInfo ? `· ${trialInfo.daysRemaining}d left` : ''}
-                </span>
-              )}
+              <span className={`inline-flex items-center gap-1 text-sm font-medium px-3 py-1 rounded-full mt-1 ${
+                hasPaidSeat
+                  ? 'text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60'
+                  : trialInfo?.isExpired
+                    ? 'text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-950/60'
+                    : 'text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60'
+              }`}>
+                {hasPaidSeat ? 'Pro' : trialInfo?.isExpired ? 'Trial ended' : `Free Trial · ${trialInfo?.daysRemaining ?? '?'}d left`}
+              </span>
             </div>
           </div>
 

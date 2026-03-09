@@ -33,7 +33,8 @@ export const useBillingStore = create<BillingState>((set) => ({
     let { team, role, membershipFound, hasPaidSeat, memberJoinedAt } = await getTeamAndRole(userId)
     if (!membershipFound) {
       const { data: { user } } = await supabase.auth.getUser()
-      const email = user?.email ?? userId
+      const email = user?.email
+      if (!email) { set({ isLoading: false }); return }
       team = await ensureTeam(userId, email, user?.created_at)
       role = team ? 'owner' : null
       hasPaidSeat = team?.subscription_status === 'active'
