@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useDarkModeStore } from '../store/darkModeStore'
 import { useAuthStore } from '../store/authStore'
@@ -132,6 +133,7 @@ export default function Home() {
   const { isDark, toggle } = useDarkModeStore()
   const user      = useAuthStore(s => s.user)
   const isLoading = useAuthStore(s => s.isLoading)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const isLoggedIn = !isLoading && !!user
 
@@ -176,7 +178,7 @@ export default function Home() {
               </Link>
             ) : (
               <>
-                <Link to="/login" className="px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">
+                <Link to="/login" className="hidden sm:block px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">
                   Sign in
                 </Link>
                 <Link to="/signup" className="px-3.5 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
@@ -184,8 +186,39 @@ export default function Home() {
                 </Link>
               </>
             )}
+            {/* Hamburger - mobile only */}
+            <button
+              onClick={() => setMobileMenuOpen(o => !o)}
+              className="md:hidden p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              aria-label="Menu"
+            >
+              {mobileMenuOpen ? (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              )}
+            </button>
           </div>
         </div>
+
+        {/* Mobile menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-950 px-4 py-3 flex flex-col gap-1">
+            <a href="#features" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Features</a>
+            <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Pricing</a>
+            <a href="#how-to" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">How To</a>
+            <Link to="/contact" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Contact</Link>
+            <Link to="/terms" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Terms</Link>
+            <a href="mailto:support@desklycrm.com" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">support@desklycrm.com</a>
+            {!isLoggedIn && (
+              <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Sign in</Link>
+            )}
+          </div>
+        )}
       </header>
 
       <main className="flex-1">
@@ -564,9 +597,10 @@ export default function Home() {
             <span className="text-sm font-semibold text-gray-900 dark:text-white">Deskly</span>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-gray-400 dark:text-gray-500">
+            <Link to="/contact" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Contact</Link>
             <Link to="/privacy" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Privacy</Link>
             <Link to="/terms" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Terms</Link>
-            <a href="mailto:support@desklycrm.com" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">support@desklycrm.com</a>
+            <a href="mailto:support@desklycrm.com" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Support</a>
             <span>© {new Date().getFullYear()} Deskly</span>
           </div>
         </div>
