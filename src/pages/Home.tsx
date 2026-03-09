@@ -138,7 +138,7 @@ export default function Home() {
   const isLoggedIn = !isLoading && !!user
 
   return (
-    <div className="h-screen overflow-y-auto overscroll-y-contain bg-white dark:bg-gray-950 font-sans flex flex-col transition-colors
+    <div className="h-[100dvh] overflow-y-auto bg-white dark:bg-gray-950 font-sans flex flex-col transition-colors
       [&::-webkit-scrollbar]:w-1.5
       [&::-webkit-scrollbar-track]:bg-transparent
       [&::-webkit-scrollbar-thumb]:bg-gray-300
