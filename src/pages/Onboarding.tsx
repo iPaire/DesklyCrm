@@ -122,11 +122,11 @@ export default function Onboarding() {
 
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 sm:px-6 h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center shrink-0">
             <span className="text-white font-bold text-xs">D</span>
           </div>
-          <span className="text-sm font-semibold text-gray-900 dark:text-white">Deskly</span>
+          <span className="text-base font-semibold text-gray-900 dark:text-white tracking-tight">Deskly</span>
         </div>
         <button
           onClick={toggle}

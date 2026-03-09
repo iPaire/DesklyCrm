@@ -110,6 +110,8 @@ export const selectTrialExpired = (s: BillingState) => {
   } else {
     // Member is locked out if the team itself has expired (owner hasn't paid)
     if (teamExpired) return true
+    // If team is subscribed, all active members have access - no personal trial check needed
+    if (isSubscribed(s.team)) return false
     // Member is also locked out if their personal member trial has expired
     if (!s.memberJoinedAt) return false
     const memberTi = getTrialInfo(s.memberJoinedAt)

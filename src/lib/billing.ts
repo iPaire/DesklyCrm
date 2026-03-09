@@ -220,9 +220,21 @@ export async function acceptInvite(inviteToken: string, userId: string) {
     .from('team_members')
     .update({ status: 'active', user_id: userId, joined_at: new Date().toISOString() })
     .eq('invite_token', inviteToken)
-    .select()
+    .select('*, teams(subscription_status, id)')
     .single()
-  return { member: data as TeamMember | null, error }
+  if (error || !data) return { member: data as TeamMember | null, error }
+
+  // If the team already has an active subscription, immediately grant a paid seat
+  const team = (data as any).teams
+  if (team?.subscription_status === 'active') {
+    await supabase
+      .from('team_members')
+      .update({ has_paid_seat: true })
+      .eq('id', data.id)
+    await syncSubscriptionQuantity(team.id)
+  }
+
+  return { member: { ...data, has_paid_seat: team?.subscription_status === 'active' } as TeamMember, error: null }
 }
 
 export async function getInviteByToken(token: string) {

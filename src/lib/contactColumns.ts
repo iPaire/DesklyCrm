@@ -5,7 +5,7 @@ export interface CustomColumnDef {
   label: string
 }
 
-export const MAX_CUSTOM_COLS = 5
+export const MAX_CUSTOM_COLS = 10
 
 export function labelToKey(label: string): string {
   return label

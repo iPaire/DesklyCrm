@@ -835,6 +835,13 @@ export default function Settings() {
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [showChangeName, setShowChangeName] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [nameLoading, setNameLoading] = useState(false)
+  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordLoading, setPasswordLoading] = useState(false)
 
   useEffect(() => {
     if (user) fetchBilling(user.id)
@@ -880,7 +887,8 @@ export default function Settings() {
     }
   }, [searchParams, navigate, user, fetchBilling])
 
-  const initials = user?.email?.[0].toUpperCase() ?? 'U'
+  const displayName: string = user?.user_metadata?.full_name ?? ''
+  const initials = displayName ? displayName[0].toUpperCase() : (user?.email?.[0].toUpperCase() ?? 'U')
 
   const handleSignOut = async () => {
     await signOut()
@@ -1071,6 +1079,44 @@ export default function Settings() {
     }
   }
 
+  const handleChangeName = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!newName.trim()) return
+    setNameLoading(true)
+    const { error } = await supabase.auth.updateUser({ data: { full_name: newName.trim() } })
+    setNameLoading(false)
+    if (error) {
+      setToast({ message: error.message, type: 'error' })
+    } else {
+      setToast({ message: 'Name updated!', type: 'success' })
+      setShowChangeName(false)
+      setNewName('')
+    }
+  }
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (newPassword !== confirmPassword) {
+      setToast({ message: 'Passwords do not match.', type: 'error' })
+      return
+    }
+    if (newPassword.length < 6) {
+      setToast({ message: 'Password must be at least 6 characters.', type: 'error' })
+      return
+    }
+    setPasswordLoading(true)
+    const { error } = await supabase.auth.updateUser({ password: newPassword })
+    setPasswordLoading(false)
+    if (error) {
+      setToast({ message: error.message, type: 'error' })
+    } else {
+      setToast({ message: 'Password updated!', type: 'success' })
+      setShowChangePassword(false)
+      setNewPassword('')
+      setConfirmPassword('')
+    }
+  }
+
   // Determine progress bar status for trial
   const trialStatus = (trialInfo?.isExpired || team?.subscription_status === 'ended')
     ? 'expired'
@@ -1105,7 +1151,10 @@ export default function Settings() {
               {initials}
             </div>
             <div>
-              <p className="text-base font-semibold text-gray-900 dark:text-white">{user?.email}</p>
+              {displayName && (
+                <p className="text-base font-semibold text-gray-900 dark:text-white">{displayName}</p>
+              )}
+              <p className={`${displayName ? 'text-sm text-gray-500 dark:text-gray-400' : 'text-base font-semibold text-gray-900 dark:text-white'}`}>{user?.email}</p>
               {subscribed ? (
                 <span className="inline-flex items-center gap-1 text-sm font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-3 py-1 rounded-full mt-1">
                   Pro
@@ -1119,8 +1168,47 @@ export default function Settings() {
           </div>
 
           <div className="space-y-3">
+            {/* Change Name */}
             <button
-              onClick={() => alert('Coming soon - password change will be available in a future update.')}
+              onClick={() => { setShowChangeName(v => !v); setShowChangePassword(false) }}
+              className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Change Name</span>
+              </div>
+              <svg className={`w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-gray-400 transition-all ${showChangeName ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+            {showChangeName && (
+              <form onSubmit={handleChangeName} className="px-4 pb-4 pt-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl -mt-2 space-y-3">
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  placeholder={displayName || 'Your name'}
+                  maxLength={60}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  disabled={!newName.trim() || nameLoading}
+                  className="w-full py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {nameLoading && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  Save Name
+                </button>
+              </form>
+            )}
+
+            {/* Change Password */}
+            <button
+              onClick={() => { setShowChangePassword(v => !v); setShowChangeName(false) }}
               className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl transition-colors group"
             >
               <div className="flex items-center gap-3">
@@ -1130,10 +1218,38 @@ export default function Settings() {
                 </svg>
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Change Password</span>
               </div>
-              <svg className="w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-gray-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className={`w-5 h-5 text-gray-300 dark:text-gray-600 group-hover:text-gray-400 transition-all ${showChangePassword ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
+            {showChangePassword && (
+              <form onSubmit={handleChangePassword} className="px-4 pb-4 pt-2 bg-gray-50 dark:bg-gray-800/50 rounded-xl -mt-2 space-y-3">
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  placeholder="New password"
+                  minLength={6}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  autoFocus
+                />
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm new password"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                <button
+                  type="submit"
+                  disabled={!newPassword || !confirmPassword || passwordLoading}
+                  className="w-full py-2 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {passwordLoading && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  Save Password
+                </button>
+              </form>
+            )}
 
             <button
               onClick={handleSignOut}

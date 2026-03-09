@@ -68,11 +68,11 @@ export default function Login() {
 
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 sm:px-6 h-14">
-        <Link to="/" className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center">
+        <Link to="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
+          <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center shrink-0">
             <span className="text-white font-bold text-xs">D</span>
           </div>
-          <span className="text-sm font-semibold text-gray-900 dark:text-white">Deskly</span>
+          <span className="text-base font-semibold text-gray-900 dark:text-white tracking-tight">Deskly</span>
         </Link>
         <button
           onClick={toggle}
