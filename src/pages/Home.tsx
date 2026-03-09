@@ -138,7 +138,7 @@ export default function Home() {
   const isLoggedIn = !isLoading && !!user
 
   return (
-    <div className="h-screen overflow-y-auto bg-white dark:bg-gray-950 font-sans flex flex-col transition-colors
+    <div className="min-h-screen bg-white dark:bg-gray-950 font-sans flex flex-col transition-colors
       [&::-webkit-scrollbar]:w-1.5
       [&::-webkit-scrollbar-track]:bg-transparent
       [&::-webkit-scrollbar-thumb]:bg-gray-300
@@ -213,10 +213,8 @@ export default function Home() {
             <a href="#how-to" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">How To</a>
             <Link to="/contact" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Contact</Link>
             <Link to="/terms" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Terms</Link>
+            <Link to="/privacy" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Privacy</Link>
             <a href="mailto:support@desklycrm.com" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">support@desklycrm.com</a>
-            {!isLoggedIn && (
-              <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Sign in</Link>
-            )}
           </div>
         )}
       </header>
