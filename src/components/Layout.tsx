@@ -133,9 +133,7 @@ export default function Layout() {
         onClick={() => navigate('/')}
         className="flex items-center gap-2.5 px-5 py-[18px] border-b border-gray-100 dark:border-gray-800 hover:opacity-80 transition-opacity text-left w-full"
       >
-        <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center shrink-0">
-          <span className="text-white font-bold text-xs">D</span>
-        </div>
+        <img src="/favicon.svg" alt="Deskly" className="w-7 h-7 shrink-0" />
         <span className="text-base font-semibold text-gray-900 dark:text-white tracking-tight">Deskly</span>
       </button>
 
@@ -263,9 +261,7 @@ export default function Layout() {
             </svg>
           </button>
           <button onClick={() => navigate('/')} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-            <div className="w-6 h-6 bg-primary-600 rounded-md flex items-center justify-center">
-              <span className="text-white font-bold text-[10px]">D</span>
-            </div>
+            <img src="/favicon.svg" alt="Deskly" className="w-6 h-6 shrink-0" />
             <span className="text-sm font-semibold text-gray-900 dark:text-white">Deskly</span>
           </button>
         </header>

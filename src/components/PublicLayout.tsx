@@ -38,9 +38,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
       <header className="sticky top-0 z-40 w-full border-b border-gray-100 dark:border-gray-800 bg-white/90 dark:bg-gray-950/90 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
-            <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center shrink-0">
-              <span className="text-white font-bold text-xs">D</span>
-            </div>
+            <img src="/favicon.svg" alt="Deskly" className="w-7 h-7 shrink-0" />
             <span className="text-base font-semibold text-gray-900 dark:text-white tracking-tight">Deskly</span>
           </Link>
 
@@ -85,9 +83,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
       <footer className="bg-white dark:bg-gray-950 border-t border-gray-100 dark:border-gray-800 py-8 px-4">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-primary-600 rounded-md flex items-center justify-center shrink-0">
-              <span className="text-white font-bold text-[10px]">D</span>
-            </div>
+            <img src="/favicon.svg" alt="Deskly" className="w-6 h-6 shrink-0" />
             <span className="text-sm font-semibold text-gray-900 dark:text-white">Deskly</span>
           </div>
           <div className="flex items-center gap-5 text-xs text-gray-400 dark:text-gray-500">
