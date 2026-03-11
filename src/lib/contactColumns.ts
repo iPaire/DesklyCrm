@@ -28,7 +28,7 @@ export async function getColumnDefs(userId: string): Promise<CustomColumnDef[]> 
     .from('user_settings')
     .select('contact_columns')
     .eq('user_id', userId)
-    .single()
+    .maybeSingle()
   return (data?.contact_columns ?? []) as CustomColumnDef[]
 }
 
