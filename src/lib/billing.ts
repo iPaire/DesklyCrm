@@ -29,6 +29,7 @@ export interface TeamMember {
   invited_at: string
   joined_at: string | null
   has_paid_seat: boolean
+  stripe_subscription_id: string | null
 }
 
 export interface TeamActivityLog {
@@ -224,17 +225,9 @@ export async function acceptInvite(inviteToken: string, userId: string) {
     .single()
   if (error || !data) return { member: data as TeamMember | null, error }
 
-  // If the team already has an active subscription, immediately grant a paid seat
-  const team = (data as any).teams
-  if (team?.subscription_status === 'active') {
-    await supabase
-      .from('team_members')
-      .update({ has_paid_seat: true })
-      .eq('id', data.id)
-    await syncSubscriptionQuantity(team.id)
-  }
-
-  return { member: { ...data, has_paid_seat: team?.subscription_status === 'active' } as TeamMember, error: null }
+  // Member joined - the owner must explicitly activate their seat via payment.
+  // Do NOT auto-grant has_paid_seat even if the team is already subscribed.
+  return { member: data as TeamMember, error: null }
 }
 
 export async function getInviteByToken(token: string) {
@@ -334,8 +327,10 @@ export async function getMemberActivity(teamId: string, userId?: string) {
 /** Fire-and-forget: sync the Stripe subscription quantity to match active member count. */
 export async function syncSubscriptionQuantity(teamId: string): Promise<void> {
   try {
+    const token = await getFreshToken()
     await supabase.functions.invoke('update-subscription', {
       body: { team_id: teamId },
+      ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
     })
   } catch {
     // non-blocking
@@ -453,21 +448,22 @@ export async function startStripeCheckout(): Promise<{ url: string | null; error
   return { url: data?.url ?? null, error: null }
 }
 
-/** Activate a paid seat for a specific team member. If subscribed, prorates Stripe immediately.
- *  Stripe is charged FIRST - only if it succeeds is the DB seat marked as paid. */
+/** Activate a paid seat for a specific team member.
+ *  Stripe is charged FIRST (prorated invoice for the remaining billing period).
+ *  Only if Stripe confirms payment is the DB seat marked as paid. */
 export async function activateMemberSeat(
   teamId: string,
   memberId: string,
 ): Promise<{ error: string | null }> {
-  // 1. Update Stripe quantity first - this triggers the prorated charge.
-  //    Only proceed if Stripe confirms success.
-  // Ensure session is fresh before invoking - let the Supabase client add auth headers automatically
   const token = await getFreshToken()
   if (!token) return { error: 'session_expired' }
 
+  // 1. Increment Stripe subscription quantity and force-pay the prorated invoice.
+  let stripeSubscriptionId: string | null = null
   try {
     const { data, error: fnErr } = await supabase.functions.invoke('update-subscription', {
-      body: { team_id: teamId },
+      body: { team_id: teamId, member_id: memberId },
+      headers: { Authorization: `Bearer ${token}` },
     })
     if (fnErr) {
       let detail = fnErr.message
@@ -478,14 +474,18 @@ export async function activateMemberSeat(
       return { error: detail ?? 'Failed to update subscription in Stripe' }
     }
     if (data?.error) return { error: data.error }
+    stripeSubscriptionId = data?.stripe_subscription_id ?? null
   } catch (err) {
     return { error: String(err) }
   }
 
-  // 2. Stripe confirmed - now mark the member as having a paid seat.
+  // 2. Stripe confirmed payment - mark member as paid and store the subscription ID.
   const { error: updateErr } = await supabase
     .from('team_members')
-    .update({ has_paid_seat: true })
+    .update({
+      has_paid_seat: true,
+      ...(stripeSubscriptionId ? { stripe_subscription_id: stripeSubscriptionId } : {}),
+    })
     .eq('id', memberId)
   if (updateErr) return { error: updateErr.message }
 

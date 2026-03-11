@@ -68,14 +68,15 @@ Deno.serve(async (req) => {
           await supabase.from('teams').update(checkoutUpdate).eq('owner_id', userId)
         }
 
-        // Mark all active members of this team as having paid seats
+        // Mark all active members of this team as having paid seats,
+        // and store the subscription ID per-member for traceability
         const targetTeamId = teamId ?? (
           userId ? (await supabase.from('teams').select('id').eq('owner_id', userId).maybeSingle()).data?.id : null
         )
-        if (targetTeamId) {
+        if (targetTeamId && subscriptionId) {
           await supabase
             .from('team_members')
-            .update({ has_paid_seat: true })
+            .update({ has_paid_seat: true, stripe_subscription_id: subscriptionId })
             .eq('team_id', targetTeamId)
             .eq('status', 'active')
         }
@@ -93,10 +94,26 @@ Deno.serve(async (req) => {
 
         const updatePayload = { subscription_status: status, seats, current_period_end: currentPeriodEnd }
 
+        let resolvedTeamId: string | null = teamId ?? null
         if (teamId) {
           await supabase.from('teams').update(updatePayload).eq('id', teamId)
         } else {
-          await supabase.from('teams').update(updatePayload).eq('stripe_subscription_id', sub.id)
+          const { data: updatedTeams } = await supabase
+            .from('teams')
+            .update(updatePayload)
+            .eq('stripe_subscription_id', sub.id)
+            .select('id')
+          resolvedTeamId = updatedTeams?.[0]?.id ?? null
+        }
+
+        // On renewal (new billing period), refresh stripe_subscription_id on all paid members
+        // so they all reflect the current subscription for this period
+        if (resolvedTeamId && status === 'active') {
+          await supabase
+            .from('team_members')
+            .update({ stripe_subscription_id: sub.id })
+            .eq('team_id', resolvedTeamId)
+            .eq('has_paid_seat', true)
         }
         break
       }

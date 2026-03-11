@@ -833,6 +833,7 @@ export default function Settings() {
   const [confirmRemoveMember, setConfirmRemoveMember] = useState<{ id: string; email: string } | null>(null)
   const [activityMember, setActivityMember] = useState<{ email: string; user_id: string | null } | null>(null)
   const [activatingId, setActivatingId] = useState<string | null>(null)
+  const [confirmActivateSeat, setConfirmActivateSeat] = useState<{ id: string; email: string } | null>(null)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState('')
   const [deleteLoading, setDeleteLoading] = useState(false)
@@ -1018,6 +1019,7 @@ export default function Settings() {
 
   const handleActivateSeat = async (memberId: string) => {
     if (!team || !user) return
+    setConfirmActivateSeat(null)
     setActivatingId(memberId)
     const { error } = await activateMemberSeat(team.id, memberId)
     if (error) {
@@ -1478,7 +1480,7 @@ export default function Settings() {
                       setToast({ message: `Link copiat pentru ${m.email}!`, type: 'success' })
                     }}
                     onViewActivity={() => setActivityMember({ email: m.email, user_id: m.user_id })}
-                    onActivateSeat={() => handleActivateSeat(m.id)}
+                    onActivateSeat={() => setConfirmActivateSeat({ id: m.id, email: m.email })}
                     isRemoving={removingId === m.id}
                     isResending={resendingId === m.id}
                     recentlyResent={recentlyResentIds.has(m.id)}
@@ -1564,6 +1566,40 @@ export default function Settings() {
             </>
           )}
         </SectionCard>
+
+        {/* Activate seat confirmation modal */}
+        {confirmActivateSeat && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setConfirmActivateSeat(null)} />
+            <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 w-full max-w-sm p-6">
+              <h3 className="text-base font-bold text-gray-900 dark:text-white mb-2">Activează seat Pro?</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
+                Vei activa accesul Pro pentru{' '}
+                <span className="font-medium text-gray-700 dark:text-gray-300">{confirmActivateSeat.email}</span>.
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                Cardul tău va fi taxat cu suma prorated pentru zilele rămase din perioada curentă de facturare. Începând cu următoarea perioadă, toți membrii activi vor fi incluși automat.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setConfirmActivateSeat(null)}
+                  className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-semibold rounded-xl transition-colors"
+                >
+                  Anulează
+                </button>
+                <button
+                  onClick={() => handleActivateSeat(confirmActivateSeat.id)}
+                  disabled={activatingId === confirmActivateSeat.id}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {activatingId === confirmActivateSeat.id ? (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : 'Confirmă plata'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Remove member confirmation modal */}
         {confirmRemoveMember && (

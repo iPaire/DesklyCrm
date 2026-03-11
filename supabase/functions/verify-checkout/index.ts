@@ -68,14 +68,15 @@ Deno.serve(async (req) => {
       await supabase.from('teams').update(update).eq('owner_id', userId)
     }
 
-    // Mark all active members of this team as having paid seats
+    // Mark all active members of this team as having paid seats,
+    // and store the subscription ID so each member knows which subscription covers them
     const targetTeamId = teamId ?? (
       userId ? (await supabase.from('teams').select('id').eq('owner_id', userId).maybeSingle()).data?.id : null
     )
-    if (targetTeamId) {
+    if (targetTeamId && subscriptionId) {
       await supabase
         .from('team_members')
-        .update({ has_paid_seat: true })
+        .update({ has_paid_seat: true, stripe_subscription_id: subscriptionId })
         .eq('team_id', targetTeamId)
         .eq('status', 'active')
     }

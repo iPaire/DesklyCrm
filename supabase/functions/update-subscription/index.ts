@@ -1,7 +1,8 @@
 // Supabase Edge Function - update-subscription
 // Updates the Stripe subscription quantity to match the team's active member count.
-// Called from the frontend after adding or removing a member.
-// Deploy: supabase functions deploy update-subscription
+// When member_id is provided (seat activation), also force-pays the prorated invoice
+// and updates the member's stripe_subscription_id in DB.
+// Deploy: supabase functions deploy update-subscription --no-verify-jwt
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -35,9 +36,9 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}))
     const teamId = body.team_id as string | undefined
+    const memberId = body.member_id as string | undefined  // present when activating a specific seat
 
-    // Get the team - caller must be the owner OR have any membership row (including just-removed members)
-    // This allows a member who just left to still trigger the seat-count sync.
+    // Get the team - caller must be the owner OR have any membership row
     let team: Record<string, unknown> | null = null
     if (teamId) {
       const [{ data: ownerTeam }, { data: membership }] = await Promise.all([
@@ -51,7 +52,6 @@ Deno.serve(async (req) => {
 
       team = ownerTeam ?? (await supabase.from('teams').select('*').eq('id', teamId).single()).data
     } else {
-      // Fall back to the team owned by the caller
       const { data } = await supabase.from('teams').select('*').eq('owner_id', user.id).maybeSingle()
       team = data
     }
@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Team not found' }), { status: 404, headers: corsHeaders })
     }
 
-    // Count all active members - if team is subscribed, all members are covered
+    // Count all active members
     const { count } = await supabase
       .from('team_members')
       .select('*', { count: 'exact', head: true })
@@ -80,16 +80,14 @@ Deno.serve(async (req) => {
       })
     }
 
-    // Fetch the subscription to get the subscription item ID
+    // Fetch current subscription to know old quantity
     const subRes = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
       headers: { Authorization: `Bearer ${stripeSecretKey}` },
     })
     const sub = await subRes.json()
     if (!subRes.ok) {
-      console.error('Stripe fetch subscription error:', sub)
-      return new Response(JSON.stringify({ error: sub.error?.message ?? 'Stripe error' }), {
-        status: 400,
-        headers: corsHeaders,
+      return new Response(JSON.stringify({ error: sub.error?.message ?? 'Stripe error fetching subscription' }), {
+        status: 400, headers: corsHeaders,
       })
     }
 
@@ -98,7 +96,10 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'No subscription item found' }), { status: 400, headers: corsHeaders })
     }
 
-    // Update quantity
+    const oldQuantity = sub.items?.data?.[0]?.quantity ?? 0
+    const addingSeat = memberId != null && seats > oldQuantity
+
+    // Update quantity on Stripe - always_invoice triggers immediate prorated invoice when adding seats
     const updateRes = await fetch(`https://api.stripe.com/v1/subscription_items/${itemId}`, {
       method: 'POST',
       headers: {
@@ -109,14 +110,48 @@ Deno.serve(async (req) => {
     })
     const updated = await updateRes.json()
     if (!updateRes.ok) {
-      console.error('Stripe update quantity error:', updated)
-      return new Response(JSON.stringify({ error: updated.error?.message ?? 'Stripe error' }), {
-        status: 400,
-        headers: corsHeaders,
+      return new Response(JSON.stringify({ error: updated.error?.message ?? 'Stripe error updating quantity' }), {
+        status: 400, headers: corsHeaders,
       })
     }
 
-    return new Response(JSON.stringify({ ok: true, seats, stripe_updated: true }), {
+    // When activating a new seat, verify the prorated invoice was actually paid
+    if (addingSeat) {
+      // Fetch the subscription again to get the latest invoice
+      const subAfterRes = await fetch(
+        `https://api.stripe.com/v1/subscriptions/${subscriptionId}?expand[]=latest_invoice.payment_intent`,
+        { headers: { Authorization: `Bearer ${stripeSecretKey}` } },
+      )
+      const subAfter = await subAfterRes.json()
+      const invoice = subAfter.latest_invoice
+
+      if (invoice && invoice.status === 'open') {
+        // Auto-pay the invoice using the customer's default payment method
+        const payRes = await fetch(`https://api.stripe.com/v1/invoices/${invoice.id}/pay`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${stripeSecretKey}` },
+        })
+        const paid = await payRes.json()
+        if (!payRes.ok || paid.status !== 'paid') {
+          // Payment failed - revert the quantity change
+          await fetch(`https://api.stripe.com/v1/subscription_items/${itemId}`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${stripeSecretKey}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `quantity=${oldQuantity}&proration_behavior=none`,
+          })
+          const failReason = paid.error?.message ?? paid.last_payment_error?.message ?? 'Payment failed'
+          return new Response(JSON.stringify({ error: failReason }), { status: 402, headers: corsHeaders })
+        }
+      } else if (!invoice || (invoice.status !== 'paid' && invoice.amount_due > 0)) {
+        // Unexpected invoice state
+        console.warn('Unexpected invoice state:', invoice?.status, invoice?.amount_due)
+      }
+    }
+
+    return new Response(JSON.stringify({ ok: true, seats, stripe_updated: true, stripe_subscription_id: subscriptionId }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {
