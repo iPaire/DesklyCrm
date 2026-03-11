@@ -9,6 +9,7 @@ import {
   resendInvite,
   cancelInvite,
   startStripeCheckout,
+  verifyCheckoutSession,
   syncSubscriptionQuantity,
   getStripePortalUrl,
   findUserIdByEmail,
@@ -861,13 +862,7 @@ export default function Settings() {
         ;(async () => {
           // Directly verify with Stripe so activation works immediately (no webhook timing dependency)
           if (sessionId) {
-            try {
-              await supabase.functions.invoke('verify-checkout', {
-                body: { session_id: sessionId },
-              })
-            } catch {
-              // If verify fails, fall through to polling
-            }
+            await verifyCheckoutSession(sessionId)
           }
           // Poll until subscription_status flips to 'active' (up to 20s, covers webhook path too)
           for (let i = 0; i < 10; i++) {

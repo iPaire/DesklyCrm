@@ -402,6 +402,27 @@ export async function checkAndRestoreSubscription(): Promise<{ restored: boolean
 
 // ─── Stripe Checkout ─────────────────────────────────────────────────────────
 
+/** Verify a completed Stripe checkout session and activate the subscription in DB.
+ *  Uses a fresh token to avoid 401s caused by session not being restored yet after Stripe redirect. */
+export async function verifyCheckoutSession(sessionId: string): Promise<{ ok: boolean; error: string | null }> {
+  const token = await getFreshToken()
+  if (!token) return { ok: false, error: 'session_expired' }
+
+  const { data, error } = await supabase.functions.invoke('verify-checkout', {
+    body: { session_id: sessionId },
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (error) {
+    let detail = error.message
+    try {
+      const body = await (error as any).context?.json()
+      if (body) detail = body.error ?? body.message ?? detail
+    } catch {}
+    return { ok: false, error: detail ?? 'verify-checkout failed' }
+  }
+  return { ok: data?.ok === true, error: null }
+}
+
 export async function startStripeCheckout(): Promise<{ url: string | null; error: string | null }> {
   const token = await getFreshToken()
   if (!token) return { url: null, error: 'session_expired' }
@@ -417,12 +438,13 @@ export async function startStripeCheckout(): Promise<{ url: string | null; error
       if (body) detail = body.error ?? body.message ?? detail
     } catch {}
     console.error('stripe-checkout error:', detail)
+    // Also check the raw error.message in case context parsing failed
+    const isJwtError = (s: string) => s.toLowerCase().includes('jwt') || s === 'Unauthorized' || s.toLowerCase().includes('unauthorized')
     if (typeof detail === 'string') {
       if (detail === 'already_subscribed') {
         return { url: null, error: 'already_subscribed' }
       }
-      // Only treat as session error when Supabase/JWT gateway explicitly rejects the token
-      if (detail.toLowerCase().includes('jwt') || detail === 'Unauthorized') {
+      if (isJwtError(detail) || isJwtError(error.message)) {
         return { url: null, error: 'session_expired' }
       }
     }
