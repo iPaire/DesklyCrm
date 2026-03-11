@@ -15,6 +15,7 @@ import {
   findUserIdByEmail,
   getMemberActivity,
   activateMemberSeat,
+  getFreshToken,
   getTrialInfo,
   type TeamActivityLog,
 } from '../lib/billing'
@@ -1051,13 +1052,18 @@ export default function Settings() {
     if (!user) return
     setDeleteLoading(true)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
+      const token = await getFreshToken()
+      if (!token) {
+        setToast({ message: 'Session expired. Please log in again.', type: 'error' })
+        setDeleteLoading(false)
+        return
+      }
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-account`,
         {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${session?.access_token}`,
+            Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
         }

@@ -269,11 +269,10 @@ export async function sendInviteEmail(params: {
   inviterEmail: string
   teamName: string | null
 }) {
+  const token = await getFreshToken()
   const { error } = await supabase.functions.invoke('send-invite', {
-    body: {
-      ...params,
-      siteUrl: window.location.origin,
-    },
+    body: { ...params, siteUrl: window.location.origin },
+    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
   })
   return { error }
 }
@@ -339,8 +338,11 @@ export async function syncSubscriptionQuantity(teamId: string): Promise<void> {
 
 /** Open the Stripe Customer Portal for the team owner to manage billing. */
 export async function getStripePortalUrl(): Promise<{ url: string | null; error: string | null }> {
+  const token = await getFreshToken()
+  if (!token) return { url: null, error: 'session_expired' }
   const { data, error } = await supabase.functions.invoke('stripe-portal', {
     body: {},
+    headers: { Authorization: `Bearer ${token}` },
   })
   if (error) {
     let detail = error.message
@@ -356,7 +358,7 @@ export async function getStripePortalUrl(): Promise<{ url: string | null; error:
 // ─── Auth helper ─────────────────────────────────────────────────────────────
 
 /** Returns a fresh access_token, refreshing if expired. Never calls refreshSession() blindly. */
-async function getFreshToken(): Promise<string | null> {
+export async function getFreshToken(): Promise<string | null> {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return null
 
