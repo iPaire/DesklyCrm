@@ -258,7 +258,7 @@ const MemberRow = ({
           <button
             onClick={onCopyLink}
             className="p-2 text-gray-400 hover:text-primary-500 dark:hover:text-primary-400 transition-colors"
-            title="Copiază link-ul de invitație"
+            title="Copy invite link"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -931,7 +931,7 @@ export default function Settings() {
     e.preventDefault()
     if (!user) return
     if (!team) {
-      setToast({ message: 'Echipa nu a fost încărcată. Reîncarcă pagina.', type: 'error' })
+      setToast({ message: 'Team not loaded. Please reload the page.', type: 'error' })
       return
     }
     setInviteLoading(true)
@@ -950,13 +950,13 @@ export default function Settings() {
         const existingUserId = await findUserIdByEmail(member.email)
         setToast({
           message: existingUserId
-            ? `${member.email} are deja cont - link-ul a fost copiat în clipboard!`
-            : `Invitație creată pentru ${member.email} - link copiat în clipboard!`,
+            ? `${member.email} already has an account - invite link copied to clipboard!`
+            : `Invitation created for ${member.email} - link copied to clipboard!`,
           type: 'success',
         })
       }
     } catch (err) {
-      setToast({ message: 'A apărut o eroare neașteptată. Încearcă din nou.', type: 'error' })
+      setToast({ message: 'An unexpected error occurred. Please try again.', type: 'error' })
     } finally {
       setInviteLoading(false)
     }
@@ -995,13 +995,13 @@ export default function Settings() {
         const existingUserId = await findUserIdByEmail(email)
         setToast({
           message: existingUserId
-            ? `Link reînnoit pentru ${email} - copiat în clipboard!`
-            : `Link nou generat pentru ${email} - copiat în clipboard!`,
+            ? `Invite link refreshed for ${email} - copied to clipboard!`
+            : `New invite link generated for ${email} - copied to clipboard!`,
           type: 'success',
         })
       }
     } catch {
-      setToast({ message: 'A apărut o eroare neașteptată.', type: 'error' })
+      setToast({ message: 'An unexpected error occurred.', type: 'error' })
     } finally {
       setResendingId(null)
     }
@@ -1027,7 +1027,7 @@ export default function Settings() {
       setToast({ message: error, type: 'error' })
     } else {
       setMembers(members.map(m => m.id === memberId ? { ...m, has_paid_seat: true } : m))
-      setToast({ message: 'Seat activat! Membrul are acum acces Pro.', type: 'success' })
+      setToast({ message: 'Seat activated! The member now has Pro access.', type: 'success' })
     }
     setActivatingId(null)
   }
@@ -1483,7 +1483,7 @@ export default function Settings() {
                       const link = `${window.location.origin}/invite/${m.invite_token}`
                       setLastInviteLink(link)
                       try { await navigator.clipboard.writeText(link) } catch {}
-                      setToast({ message: `Link copiat pentru ${m.email}!`, type: 'success' })
+                      setToast({ message: `Invite link copied for ${m.email}!`, type: 'success' })
                     }}
                     onViewActivity={() => setActivityMember({ email: m.email, user_id: m.user_id })}
                     onActivateSeat={() => setConfirmActivateSeat({ id: m.id, email: m.email })}
@@ -1537,7 +1537,7 @@ export default function Settings() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
                   )}
-                  {inviteSent ? 'Link copiat!' : 'Invite'}
+                  {inviteSent ? 'Link copied!' : 'Invite'}
                 </button>
               </form>
 
@@ -1547,16 +1547,16 @@ export default function Settings() {
                   <button
                     onClick={async () => {
                       try { await navigator.clipboard.writeText(lastInviteLink) } catch {}
-                      setToast({ message: 'Link copiat în clipboard!', type: 'success' })
+                      setToast({ message: 'Link copied to clipboard!', type: 'success' })
                     }}
                     className="shrink-0 px-2.5 py-1 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"
                   >
-                    Copiază
+                    Copy
                   </button>
                   <button
                     onClick={() => setLastInviteLink(null)}
                     className="shrink-0 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-400 transition-colors"
-                    title="Închide"
+                    title="Close"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1566,7 +1566,7 @@ export default function Settings() {
               )}
               {!lastInviteLink && (
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-3 text-center">
-                  Link-ul de invitație va apărea aici după ce inviți un coleg.
+                  The invite link will appear here after you invite a teammate.
                 </p>
               )}
             </>
@@ -1578,20 +1578,20 @@ export default function Settings() {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setConfirmActivateSeat(null)} />
             <div className="relative bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 w-full max-w-sm p-6">
-              <h3 className="text-base font-bold text-gray-900 dark:text-white mb-2">Activează seat Pro?</h3>
+              <h3 className="text-base font-bold text-gray-900 dark:text-white mb-2">Activate Pro seat?</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">
-                Vei activa accesul Pro pentru{' '}
+                You are activating Pro access for{' '}
                 <span className="font-medium text-gray-700 dark:text-gray-300">{confirmActivateSeat.email}</span>.
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                Cardul tău va fi taxat cu suma prorated pentru zilele rămase din perioada curentă de facturare. Începând cu următoarea perioadă, toți membrii activi vor fi incluși automat.
+                Your card will be charged a prorated amount for the remaining days of the current billing period. From the next billing cycle, all active members are included automatically.
               </p>
               <div className="flex gap-2">
                 <button
                   onClick={() => setConfirmActivateSeat(null)}
                   className="flex-1 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-semibold rounded-xl transition-colors"
                 >
-                  Anulează
+                  Cancel
                 </button>
                 <button
                   onClick={() => handleActivateSeat(confirmActivateSeat.id)}
@@ -1600,7 +1600,7 @@ export default function Settings() {
                 >
                   {activatingId === confirmActivateSeat.id ? (
                     <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : 'Confirmă plata'}
+                  ) : 'Confirm payment'}
                 </button>
               </div>
             </div>

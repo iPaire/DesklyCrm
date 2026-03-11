@@ -7,9 +7,9 @@ interface BillingState {
   team: Team | null
   members: TeamMember[]
   trialInfo: TrialInfo | null
-  memberTrialInfo: TrialInfo | null  // trial personal al userului curent (pt membri)
+  memberTrialInfo: TrialInfo | null  // personal trial for the current user (for members)
   memberJoinedAt: string | null      // raw date for live expiry recomputation
-  hasPaidSeat: boolean               // are seat plătit (owner subscribed SAU member.has_paid_seat)
+  hasPaidSeat: boolean               // has a paid seat (owner subscribed OR member.has_paid_seat)
   isOwner: boolean
   isLoading: boolean
   fetchBilling: (userId: string) => Promise<void>
@@ -95,7 +95,7 @@ export const useBillingStore = create<BillingState>((set) => ({
   clearBilling: () => set({ team: null, members: [], trialInfo: null, memberTrialInfo: null, memberJoinedAt: null, hasPaidSeat: false, isOwner: false, isLoading: false }),
 }))
 
-// Owner: trial expirat și neabonat
+// Owner: trial expired and not subscribed
 export const selectIsSubscribed = (s: BillingState) => isSubscribed(s.team)
 export const selectTrialExpired = (s: BillingState) => {
   if (s.hasPaidSeat) return false  // has paid seat → never blocked
