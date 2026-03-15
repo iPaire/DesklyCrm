@@ -71,12 +71,16 @@ function parseCSV(text: string): ParsedCSV {
 }
 
 const FIELD_ALIASES: Record<string, string[]> = {
-  name:    ['name', 'full name', 'fullname', 'contact name', 'full_name', 'contact_name', 'firstname', 'first name', 'display name'],
-  email:   ['email', 'email address', 'e-mail', 'email_address', 'emailaddress', 'mail'],
-  phone:   ['phone', 'phone number', 'mobile', 'cell', 'telephone', 'phone_number', 'mobile_phone', 'work phone'],
+  name:    ['name', 'full name', 'fullname', 'contact name', 'full_name', 'contact_name', 'firstname', 'first name', 'display name', 'person name'],
+  email:   ['email', 'email address', 'e-mail', 'email_address', 'emailaddress', 'mail', 'primary email',
+            'email - work', 'email - home', 'email - other', 'email - primary'],
+  phone:   ['phone', 'phone number', 'mobile', 'cell', 'telephone', 'phone_number', 'mobile_phone', 'work phone',
+            'phone - work', 'phone - mobile', 'phone - home', 'phone - other', 'mobile phone'],
   company: ['company', 'organization', 'company name', 'account', 'firm', 'employer', 'company_name', 'account name'],
   notes:   ['notes', 'note', 'description', 'comments', 'comment', 'bio', 'about', 'memo'],
 }
+
+const LAST_NAME_ALIASES = ['last name', 'lastname', 'last_name', 'surname', 'family name']
 
 function autoDetect(headers: string[]): Record<string, string> {
   const mapping: Record<string, string> = {}
@@ -84,6 +88,11 @@ function autoDetect(headers: string[]): Record<string, string> {
   for (const [field, aliases] of Object.entries(FIELD_ALIASES)) {
     const idx = norm.findIndex(h => aliases.includes(h))
     if (idx !== -1) mapping[field] = headers[idx]
+  }
+  // Pipedrive / HubSpot: separate Last Name column - combine with first name at import time
+  const lastIdx = norm.findIndex(h => LAST_NAME_ALIASES.includes(h))
+  if (lastIdx !== -1 && mapping.name) {
+    mapping._lastName = headers[lastIdx]
   }
   return mapping
 }
@@ -477,7 +486,7 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
       const csv = parseCSV(e.target?.result as string)
       if (csv.headers.length === 0) { setError('Could not parse CSV - check the file format.'); return }
       const detected = autoDetect(csv.headers)
-      const usedCols = new Set(Object.values(detected))
+      const usedCols = new Set(Object.values(detected).filter(Boolean))
       const extras: CustomImportField[] = csv.headers
         .filter(h => !usedCols.has(h))
         .map(h => ({ csvCol: h, label: h, enabled: false }))
@@ -522,9 +531,12 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
           const val = row[cf.csvCol]?.trim()
           if (val) custom_fields[labelToKey(cf.label)] = val
         }
+        const firstName = row[mapping.name]?.trim() || ''
+        const lastName  = mapping._lastName ? (row[mapping._lastName]?.trim() || '') : ''
+        const fullName  = [firstName, lastName].filter(Boolean).join(' ')
         return {
           user_id: user.id,
-          name:    row[mapping.name]?.trim()    || '',
+          name:    fullName,
           email:   mapping.email   ? (row[mapping.email]?.trim()   || null) : null,
           phone:   mapping.phone   ? (row[mapping.phone]?.trim()   || null) : null,
           company: mapping.company ? (row[mapping.company]?.trim() || null) : null,
@@ -715,11 +727,17 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
                   <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                     {preview.map((row, i) => (
                       <tr key={i}>
-                        {IMPORT_FIELDS.filter(f => mapping[f.key]).map(f => (
-                          <td key={f.key} className="px-4 py-2 text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
-                            {row[mapping[f.key]] || <span className="text-gray-300 dark:text-gray-600">-</span>}
-                          </td>
-                        ))}
+                        {IMPORT_FIELDS.filter(f => mapping[f.key]).map(f => {
+                          let val = row[mapping[f.key]]?.trim() || ''
+                          if (f.key === 'name' && mapping._lastName) {
+                            val = [val, row[mapping._lastName]?.trim()].filter(Boolean).join(' ')
+                          }
+                          return (
+                            <td key={f.key} className="px-4 py-2 text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
+                              {val || <span className="text-gray-300 dark:text-gray-600">-</span>}
+                            </td>
+                          )
+                        })}
                         {customFields.filter(f => f.enabled).map(cf => (
                           <td key={cf.csvCol} className="px-4 py-2 text-gray-700 dark:text-gray-300 max-w-[120px] truncate">
                             {row[cf.csvCol] || <span className="text-gray-300 dark:text-gray-600">-</span>}
