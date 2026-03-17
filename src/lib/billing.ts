@@ -131,11 +131,16 @@ export async function getTeam(userId: string) {
 export async function getTeamAndRole(
   userId: string,
 ): Promise<{ team: Team | null; role: 'owner' | 'member' | null; membershipFound: boolean; hasPaidSeat: boolean; memberJoinedAt: string | null }> {
-  const { data: memberships } = await supabase
+  const { data: memberships, error: membershipsError } = await supabase
     .from('team_members')
     .select('team_id, role, has_paid_seat, joined_at')
     .eq('user_id', userId)
     .eq('status', 'active')
+
+  // Network failure - don't treat as "no membership" or ensureTeam will create a bad team
+  if (membershipsError) {
+    return { team: null, role: null, membershipFound: true, hasPaidSeat: false, memberJoinedAt: null }
+  }
 
   if (!memberships || memberships.length === 0) {
     return { team: null, role: null, membershipFound: false, hasPaidSeat: false, memberJoinedAt: null }

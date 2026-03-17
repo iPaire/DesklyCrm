@@ -19,21 +19,21 @@ import {
 type ToastState = { message: string; type: 'success' | 'error' } | null
 type SortBy = 'name' | 'created_at'
 type SortDir = 'asc' | 'desc'
-type GroupBy = 'none' | 'month' | 'week' | 'company'
+type GroupBy = string // 'none' | 'month' | 'week' | 'company' | 'col:<key>'
 
 // ── Group label helper ────────────────────────────────────────────────────────
 
-function getGroupLabel(dateStr: string, groupBy: GroupBy, company?: string | null): string {
+function getGroupLabel(contact: Contact, groupBy: string, customColumns: CustomColumnDef[]): string {
   if (groupBy === 'company') {
-    const name = company?.trim()
+    const name = contact.company?.trim()
     return name ? name[0].toUpperCase() + name.slice(1) : '- No Company'
   }
-  const date = new Date(dateStr)
   if (groupBy === 'month') {
+    const date = new Date(contact.created_at)
     return date.toLocaleString('default', { month: 'long', year: 'numeric' })
   }
   if (groupBy === 'week') {
-    const d = new Date(date)
+    const d = new Date(contact.created_at)
     d.setHours(0, 0, 0, 0)
     d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7))
     const week1 = new Date(d.getFullYear(), 0, 4)
@@ -43,6 +43,12 @@ function getGroupLabel(dateStr: string, groupBy: GroupBy, company?: string | nul
         ((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7,
       )
     return `Week ${weekNum}, ${d.getFullYear()}`
+  }
+  if (groupBy.startsWith('col:')) {
+    const key = groupBy.slice(4)
+    const colDef = customColumns.find((c) => c.key === key)
+    const value = contact.custom_fields?.[key]?.trim()
+    return value || `- No ${colDef?.label ?? key}`
   }
   return ''
 }
@@ -287,6 +293,14 @@ export default function Contacts() {
     if (user) getColumnDefs(user.id).then(setCustomColumns)
   }, [user])
 
+  // Reset groupBy if the custom column it references was deleted
+  useEffect(() => {
+    if (groupBy.startsWith('col:')) {
+      const key = groupBy.slice(4)
+      if (!customColumns.find((c) => c.key === key)) setGroupBy('none')
+    }
+  }, [customColumns, groupBy])
+
   useEffect(() => {
     fetchContacts()
   }, [])
@@ -345,20 +359,23 @@ export default function Contacts() {
     if (groupBy === 'none') return [{ label: '', contacts: filtered }]
     const map = new Map<string, Contact[]>()
     for (const c of filtered) {
-      const label = getGroupLabel(c.created_at, groupBy, c.company)
+      const label = getGroupLabel(c, groupBy, customColumns)
       if (!map.has(label)) map.set(label, [])
       map.get(label)!.push(c)
     }
     const entries = Array.from(map.entries()).map(([label, contacts]) => ({ label, contacts }))
-    if (groupBy === 'company') {
+    if (groupBy === 'company' || groupBy.startsWith('col:')) {
+      const key = groupBy.startsWith('col:') ? groupBy.slice(4) : null
+      const colDef = key ? customColumns.find((c) => c.key === key) : null
+      const noLabel = colDef ? `- No ${colDef.label}` : '- No Company'
       entries.sort((a, b) => {
-        if (a.label === '- No Company') return 1
-        if (b.label === '- No Company') return -1
+        if (a.label === noLabel) return 1
+        if (b.label === noLabel) return -1
         return a.label.localeCompare(b.label)
       })
     }
     return entries
-  }, [filtered, groupBy])
+  }, [filtered, groupBy, customColumns])
 
   // Sort toggle
   const toggleSort = (field: SortBy) => {
@@ -696,9 +713,9 @@ export default function Contacts() {
           <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
 
           {/* Group by */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Group:</span>
-            {(['none', 'month', 'week', 'company'] as GroupBy[]).map((g) => (
+            {(['none', 'month', 'week', 'company'] as const).map((g) => (
               <button
                 key={g}
                 onClick={() => setGroupBy(g)}
@@ -709,6 +726,19 @@ export default function Contacts() {
                 }`}
               >
                 {g === 'none' ? 'None' : g.charAt(0).toUpperCase() + g.slice(1)}
+              </button>
+            ))}
+            {customColumns.map((col) => (
+              <button
+                key={`col:${col.key}`}
+                onClick={() => setGroupBy(`col:${col.key}`)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors ${
+                  groupBy === `col:${col.key}`
+                    ? 'bg-primary-600 text-white shadow-sm'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                {col.label}
               </button>
             ))}
           </div>
