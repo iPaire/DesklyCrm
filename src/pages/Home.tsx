@@ -48,7 +48,7 @@ function AppMockup() {
           <span className="w-3 h-3 rounded-full bg-yellow-400" />
           <span className="w-3 h-3 rounded-full bg-green-400" />
           <div className="flex-1 mx-3 bg-white dark:bg-gray-800 rounded-md px-3 py-1 text-[10px] text-gray-400 dark:text-gray-500">
-            app.deskly.io/deals
+            www.desklycrm.com/deals
           </div>
         </div>
 

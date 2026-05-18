@@ -27,9 +27,16 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(-8px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        float: {
+          '0%, 100%': { transform: 'translateY(0px)' },
+          '50%': { transform: 'translateY(-12px)' },
+        },
       },
       animation: {
         'fadeInDown': 'fadeInDown 0.2s ease',
+        'float': 'float 6s ease-in-out infinite',
+        'float-delayed': 'float 6s ease-in-out 2s infinite',
+        'pulse-slow': 'pulse 4s ease-in-out infinite',
       },
     },
   },
