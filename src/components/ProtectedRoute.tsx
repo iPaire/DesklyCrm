@@ -20,9 +20,11 @@ export default function ProtectedRoute() {
 
   if (!user) return <Navigate to="/login" replace />
 
-  // Redirect new users to onboarding (flag set by Signup on success)
+  // Redirect to onboarding if new user OR if consent hasn't been given yet
+  // (covers both email signup and Google OAuth flows)
   const isNewUser = localStorage.getItem('deskly-new-user') === '1'
-  if (isNewUser && location.pathname !== '/onboarding') {
+  const consentGiven = localStorage.getItem('deskly-consent-v1') === '1'
+  if ((isNewUser || !consentGiven) && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />
   }
 

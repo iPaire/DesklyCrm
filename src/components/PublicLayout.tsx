@@ -89,7 +89,7 @@ export default function PublicLayout({ children }: { children: React.ReactNode }
           <div className="flex items-center gap-5 text-xs text-gray-400 dark:text-gray-500">
             <Link to="/privacy" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Privacy</Link>
             <Link to="/terms" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Terms</Link>
-            <a href="mailto:hello@deskly.io" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">hello@deskly.io</a>
+            <Link to="/contact" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Contact</Link>
             <span>© {new Date().getFullYear()} Deskly</span>
           </div>
         </div>

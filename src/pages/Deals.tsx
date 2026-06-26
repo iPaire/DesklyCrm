@@ -793,13 +793,17 @@ export default function Deals() {
     }
   }, [selectedDealId, updateHoveredStage])
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
+  // ── Fetch + Realtime subscription ─────────────────────────────────────────
   useEffect(() => {
+    let cancelled = false
+    let channel: ReturnType<typeof supabase.channel> | null = null
+
     async function load() {
       const [{ data: dealData, error: dealErr }, { data: contactData, error: contactErr }] = await Promise.all([
         supabase.from('deals').select('*').eq('archived', false).order('created_at', { ascending: true }),
         supabase.from('contacts').select('*').order('name', { ascending: true }),
       ])
+      if (cancelled) return
       if (dealErr || contactErr) {
         setFetchError((dealErr ?? contactErr)!.message)
         setLoading(false)
@@ -811,9 +815,59 @@ export default function Deals() {
       setContacts(c)
       setItems(buildItems(d))
       setLoading(false)
+
+      // Subscribe to real-time deal changes (RLS ensures we only see our team's data)
+      channel = supabase
+        .channel(`deals:${user?.id}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'deals' },
+          (payload) => {
+            if (cancelled) return
+            if (payload.eventType === 'INSERT') {
+              const newDeal = payload.new as Deal
+              if (newDeal.archived) return
+              setDeals(prev => {
+                if (prev.find(d => d.id === newDeal.id)) return prev
+                const next = [...prev, newDeal]
+                setItems(buildItems(next))
+                return next
+              })
+            } else if (payload.eventType === 'UPDATE') {
+              const updated = payload.new as Deal
+              if (updated.archived) {
+                setDeals(prev => {
+                  const next = prev.filter(d => d.id !== updated.id)
+                  setItems(buildItems(next))
+                  return next
+                })
+              } else {
+                setDeals(prev => {
+                  const next = prev.map(d => d.id === updated.id ? updated : d)
+                  setItems(buildItems(next))
+                  return next
+                })
+              }
+            } else if (payload.eventType === 'DELETE') {
+              const deleted = payload.old as { id: string }
+              setDeals(prev => {
+                const next = prev.filter(d => d.id !== deleted.id)
+                setItems(buildItems(next))
+                return next
+              })
+            }
+          },
+        )
+        .subscribe()
     }
+
     load()
-  }, [retryKey])
+
+    return () => {
+      cancelled = true
+      if (channel) supabase.removeChannel(channel)
+    }
+  }, [retryKey, user?.id])
 
   const activeDeal   = activeId      ? deals.find(d => d.id === activeId)      ?? null : null
   const selectedDeal = selectedDealId ? deals.find(d => d.id === selectedDealId) ?? null : null

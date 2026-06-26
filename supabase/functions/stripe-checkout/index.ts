@@ -4,6 +4,7 @@
 // Deploy: supabase functions deploy stripe-checkout
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { rateLimit, tooManyRequests } from '../_shared/rate-limit.ts'
 
 const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY')!
 const stripePriceId = Deno.env.get('STRIPE_PRICE_ID')!
@@ -50,6 +51,10 @@ Deno.serve(async (req) => {
         headers: corsHeaders,
       })
     }
+
+    // Rate limit: 10 checkout attempts per minute per user
+    const rl = await rateLimit(`rl:checkout:${user.id}`, 10, 60)
+    if (!rl.allowed) return tooManyRequests('Too many checkout requests.', corsHeaders)
 
     // Parse request body
     const body = await req.json().catch(() => ({}))
@@ -181,12 +186,14 @@ Deno.serve(async (req) => {
     }
 
     // Create checkout session via Stripe API
+    // Idempotency-Key: tied to user + 5-min window - safe to retry, prevents duplicates
     const formBody = buildStripeFormBody(params)
     const stripeRes = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${stripeSecretKey}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization:    `Bearer ${stripeSecretKey}`,
+        'Content-Type':   'application/x-www-form-urlencoded',
+        'Idempotency-Key': `ck-${user.id}-${Math.floor(Date.now() / 300_000)}`,
       },
       body: formBody,
     })

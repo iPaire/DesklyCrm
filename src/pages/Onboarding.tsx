@@ -59,6 +59,24 @@ export default function Onboarding() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Consent modal - shown for Google OAuth users and any user without recorded consent
+  const [showConsent, setShowConsent] = useState(
+    localStorage.getItem('deskly-consent-v1') !== '1'
+  )
+  const [consentTerms, setConsentTerms] = useState(false)
+  const [consentMarketing, setConsentMarketing] = useState(false)
+
+  function handleConsent() {
+    if (!consentTerms) return
+    localStorage.setItem('deskly-consent-v1', '1')
+    localStorage.setItem('deskly-marketing-v1', consentMarketing ? '1' : '0')
+    setShowConsent(false)
+    // Existing users (no new-user flag) just needed consent - go straight to dashboard
+    if (localStorage.getItem('deskly-new-user') !== '1') {
+      navigate('/dashboard', { replace: true })
+    }
+  }
+
   function goTo(s: Step) {
     setStep(s)
     setError('')
@@ -177,6 +195,65 @@ export default function Onboarding() {
           )
         })}
       </div>
+
+      {/* Consent modal - shown for Google OAuth and users without prior consent */}
+      {showConsent && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-2xl p-8">
+            <div className="w-12 h-12 bg-primary-100 dark:bg-primary-950 rounded-2xl flex items-center justify-center mb-5">
+              <svg className="w-6 h-6 text-primary-600 dark:text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Before you start</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              Please review and accept our terms to continue using Deskly.
+            </p>
+
+            <div className="space-y-4 mb-6">
+              <label className="flex items-start gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={consentTerms}
+                  onChange={e => setConsentTerms(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-primary-600 shrink-0"
+                />
+                <span className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                  I agree to the{' '}
+                  <a href="/terms" target="_blank" rel="noopener" className="text-primary-600 dark:text-primary-400 font-medium hover:underline">
+                    Terms of Service
+                  </a>{' '}
+                  and{' '}
+                  <a href="/privacy" target="_blank" rel="noopener" className="text-primary-600 dark:text-primary-400 font-medium hover:underline">
+                    Privacy Policy
+                  </a>
+                  <span className="text-red-500 ml-0.5">*</span>
+                </span>
+              </label>
+              <label className="flex items-start gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={consentMarketing}
+                  onChange={e => setConsentMarketing(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-primary-600 shrink-0"
+                />
+                <span className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                  Send me product updates and tips from Deskly{' '}
+                  <span className="text-gray-400 dark:text-gray-500">(optional)</span>
+                </span>
+              </label>
+            </div>
+
+            <button
+              onClick={handleConsent}
+              disabled={!consentTerms}
+              className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Card */}
       <div className="flex-1 flex items-start justify-center px-4 py-8">

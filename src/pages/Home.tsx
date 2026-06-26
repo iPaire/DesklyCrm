@@ -3,8 +3,6 @@ import { Link } from 'react-router-dom'
 import { useDarkModeStore } from '../store/darkModeStore'
 import { useAuthStore } from '../store/authStore'
 
-// ── Icons ─────────────────────────────────────────────────────────────────────
-
 function SunIcon() {
   return (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -21,122 +19,171 @@ function MoonIcon() {
   )
 }
 
-function Check({ className = 'w-4 h-4' }: { className?: string }) {
+function DashboardMockup() {
   return (
-    <svg className={className} fill="currentColor" viewBox="0 0 20 20">
-      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-    </svg>
-  )
-}
-
-// ── App screenshot mockup ─────────────────────────────────────────────────────
-
-function AppMockup() {
-  const stages = [
-    { label: 'Lead', color: 'bg-gray-400', count: 3, deals: ['Acme Corp', 'Nova Inc'] },
-    { label: 'Proposal', color: 'bg-violet-500', count: 2, deals: ['TechFlow', 'Brightline'] },
-    { label: 'Closed', color: 'bg-emerald-500', count: 1, deals: ['Stellar Co'] },
-  ]
-
-  return (
-    <div className="relative w-full max-w-2xl mx-auto">
+    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_rgba(15,23,42,0.06)] overflow-hidden text-left">
       {/* Browser chrome */}
-      <div className="bg-gray-100 dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-2xl overflow-hidden">
-        {/* Tab bar */}
-        <div className="flex items-center gap-1.5 px-3 py-2.5 bg-gray-200 dark:bg-gray-900 border-b border-gray-300 dark:border-gray-700">
-          <span className="w-3 h-3 rounded-full bg-red-400" />
-          <span className="w-3 h-3 rounded-full bg-yellow-400" />
-          <span className="w-3 h-3 rounded-full bg-green-400" />
-          <div className="flex-1 mx-3 bg-white dark:bg-gray-800 rounded-md px-3 py-1 text-[10px] text-gray-400 dark:text-gray-500">
-            www.desklycrm.com/deals
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800">
+        <span className="w-[11px] h-[11px] rounded-full bg-[#E6655C]" />
+        <span className="w-[11px] h-[11px] rounded-full bg-[#E5B33E]" />
+        <span className="w-[11px] h-[11px] rounded-full bg-[#5BB872]" />
+        <span className="mx-auto font-mono text-[11.5px] text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md px-8 py-[3px]">
+          www.desklycrm.com/dashboard
+        </span>
+      </div>
+
+      {/* App body */}
+      <div className="flex h-[380px]">
+        {/* Mini sidebar */}
+        <div className="w-[172px] shrink-0 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 p-[10px] flex flex-col gap-[3px]">
+          <div className="flex items-center gap-2 px-2 mb-2">
+            <img src="/favicon.svg" alt="Deskly" className="w-[22px] h-[22px] shrink-0" />
+            <span className="text-[13px] font-bold text-gray-900 dark:text-white">Deskly</span>
+          </div>
+          <div className="relative flex items-center justify-between px-[9px] py-[7px] rounded-lg bg-primary-50 dark:bg-primary-950 text-primary-700 dark:text-primary-300 text-[12.5px] font-semibold">
+            <span className="absolute top-2 bottom-2 w-[3px] rounded-full bg-primary-600" style={{ left: '-2px' }} />
+            Dashboard
+          </div>
+          <div className="flex items-center justify-between px-[9px] py-[7px] rounded-lg text-gray-500 dark:text-gray-400 text-[12.5px]">
+            Contacts
+            <span className="font-mono text-[10.5px] text-gray-400">124</span>
+          </div>
+          <div className="flex items-center justify-between px-[9px] py-[7px] rounded-lg text-gray-500 dark:text-gray-400 text-[12.5px]">
+            Deals
+            <span className="font-mono text-[10.5px] text-gray-400">12</span>
+          </div>
+          <div className="flex items-center justify-between px-[9px] py-[7px] rounded-lg text-gray-500 dark:text-gray-400 text-[12.5px]">
+            Tasks
+            <span className="bg-[#C9524B] text-white text-[9.5px] font-semibold rounded-full px-1.5 py-px">3</span>
           </div>
         </div>
 
-        {/* App UI */}
-        <div className="flex h-[280px] sm:h-[320px]">
-          {/* Sidebar */}
-          <div className="w-[140px] shrink-0 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-gray-800 flex flex-col p-3 gap-1">
-            <div className="flex items-center gap-1.5 mb-3">
-              <img src="/favicon.svg" alt="Deskly" className="w-5 h-5 shrink-0" />
-              <span className="text-[10px] font-semibold text-gray-900 dark:text-white">Deskly</span>
-            </div>
-            {['Dashboard', 'Contacts', 'Deals', 'Tasks', 'Settings'].map((item, i) => (
-              <div key={item} className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-[10px] ${
-                i === 2 ? 'bg-primary-50 dark:bg-primary-950 text-primary-700 dark:text-primary-300 font-semibold' : 'text-gray-500 dark:text-gray-400'
-              }`}>
-                <div className={`w-1.5 h-1.5 rounded-full ${i === 2 ? 'bg-primary-500' : 'bg-gray-300 dark:bg-gray-700'}`} />
-                {item}
+        {/* Mini main content */}
+        <div className="flex-1 bg-gray-50 dark:bg-gray-950 py-[18px] px-5 overflow-hidden">
+          <p className="font-mono text-[9.5px] tracking-[0.1em] uppercase text-gray-400">Tuesday · June 25</p>
+          <p className="text-[17px] font-bold tracking-tight text-gray-900 dark:text-white mt-1 mb-3.5">Good morning, Maria.</p>
+
+          <div className="grid gap-2.5 mb-2.5" style={{ gridTemplateColumns: '1.5fr 1fr' }}>
+            {/* Pipeline card */}
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-[10px] py-[15px] px-4">
+              <span className="font-mono text-[9px] tracking-[0.08em] uppercase text-gray-400">Open pipeline value</span>
+              <p className="text-[28px] font-bold tracking-tight text-gray-900 dark:text-white mt-1 tabular-nums">$48,500</p>
+              <div className="h-1.5 rounded bg-gray-100 dark:bg-gray-800 mt-3 overflow-hidden">
+                <div className="h-full rounded bg-gradient-to-r from-primary-600 to-primary-400" style={{ width: '81%' }} />
               </div>
-            ))}
-          </div>
-
-          {/* Kanban board */}
-          <div className="flex-1 bg-gray-50 dark:bg-gray-950 p-3 overflow-hidden">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-gray-900 dark:text-white">Pipeline</span>
-              <div className="px-2 py-0.5 bg-primary-600 text-white text-[9px] font-semibold rounded-md">+ Add deal</div>
+              <div className="flex gap-1 mt-3">
+                <div className="h-1 rounded" style={{ flex: 8, background: '#8A8275' }} />
+                <div className="h-1 rounded" style={{ flex: 6, background: '#2E72C8' }} />
+                <div className="h-1 rounded" style={{ flex: 4, background: '#6D5BD0' }} />
+                <div className="h-1 rounded" style={{ flex: 2, background: '#C8841F' }} />
+              </div>
             </div>
-            <div className="flex gap-2 overflow-hidden">
-              {stages.map(stage => (
-                <div key={stage.label} className="w-[120px] shrink-0 bg-white dark:bg-gray-800 rounded-lg p-2">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <span className={`w-1.5 h-1.5 rounded-full ${stage.color}`} />
-                    <span className="text-[9px] font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide">{stage.label}</span>
-                    <span className="ml-auto text-[9px] text-gray-400">{stage.count}</span>
-                  </div>
-                  <div className="space-y-1.5">
-                    {stage.deals.map(deal => (
-                      <div key={deal} className="bg-gray-50 dark:bg-gray-700 rounded-md p-1.5">
-                        <p className="text-[9px] font-semibold text-gray-800 dark:text-gray-200">{deal}</p>
-                        <div className="flex items-center gap-1 mt-1">
-                          <div className="w-3 h-3 rounded-full bg-primary-100 dark:bg-primary-950 flex items-center justify-center">
-                            <span className="text-[6px] text-primary-600 font-bold">J</span>
-                          </div>
-                          <span className="text-[8px] text-gray-400">${Math.floor(Math.random() * 20 + 5)}k</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+
+            {/* Right column */}
+            <div className="flex flex-col gap-2.5">
+              <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-[10px] py-3 px-[14px]">
+                <span className="font-mono text-[9px] tracking-[0.08em] uppercase text-gray-400">Contacts</span>
+                <p className="text-[19px] font-bold text-gray-900 dark:text-white mt-0.5 tabular-nums">124</p>
+              </div>
+              <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-[10px] py-3 px-[14px]">
+                <span className="font-mono text-[9px] tracking-[0.08em] uppercase text-gray-400">Won this month</span>
+                <p className="text-[19px] font-bold text-gray-900 dark:text-white mt-0.5 tabular-nums">$23,800</p>
+              </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Floating notification */}
-      <div className="absolute -bottom-3 -right-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl px-3 py-2 flex items-center gap-2 text-xs">
-        <span className="w-6 h-6 bg-emerald-100 dark:bg-emerald-950 rounded-full flex items-center justify-center text-emerald-600 dark:text-emerald-400">✓</span>
-        <div>
-          <p className="font-semibold text-gray-900 dark:text-white text-[11px]">Deal closed!</p>
-          <p className="text-gray-400 dark:text-gray-500 text-[10px]">Stellar Co · $24k</p>
-        </div>
-      </div>
-
-      {/* Floating email pill */}
-      <div className="absolute -top-3 -left-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl px-3 py-2 flex items-center gap-2">
-        <span className="text-sm">✉️</span>
-        <div>
-          <p className="text-[11px] font-semibold text-gray-900 dark:text-white">Email synced</p>
-          <p className="text-[10px] text-gray-400 dark:text-gray-500">from john@acme.com</p>
+          {/* Alert task */}
+          <div
+            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-[9px] py-[11px] px-[14px]"
+            style={{ borderLeft: '3px solid #C9524B' }}
+          >
+            <p className="font-mono text-[9px] tracking-[0.08em] uppercase" style={{ color: '#C9524B' }}>Needs you today</p>
+            <p className="text-[12.5px] font-semibold text-gray-900 dark:text-white mt-1">Call Acme Corp back · due yesterday</p>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+const features = [
+  {
+    icon: (
+      <div className="w-[38px] h-[38px] rounded-[10px] bg-primary-50 dark:bg-primary-950 flex items-center justify-center">
+        <svg width="20" height="18" viewBox="0 0 20 18" fill="none">
+          <circle cx="10" cy="5.5" r="3.5" fill="#4F46E5" />
+          <path d="M2 17c0-3.866 3.582-7 8-7s8 3.134 8 7" fill="#4F46E5" />
+        </svg>
+      </div>
+    ),
+    title: 'Contacts that stay tidy',
+    desc: 'A fast, scannable register of every person and company - with custom columns, smart search, and a full history on each one.',
+  },
+  {
+    icon: (
+      <div className="w-[38px] h-[38px] rounded-[10px] bg-[#EDE9F9] dark:bg-violet-950 flex items-end justify-center gap-[3px] pb-[11px]">
+        <span className="w-1 rounded-sm" style={{ height: '9px', background: '#6D5BD0' }} />
+        <span className="w-1 rounded-sm" style={{ height: '15px', background: '#6D5BD0' }} />
+        <span className="w-1 rounded-sm" style={{ height: '12px', background: 'rgba(109,91,208,0.6)' }} />
+      </div>
+    ),
+    title: 'A pipeline you can read',
+    desc: 'Drag deals across stages on a Kanban board with live column totals. Color is a quiet signal, never noise.',
+  },
+  {
+    icon: (
+      <div className="w-[38px] h-[38px] rounded-[10px] bg-[#FAEEDC] dark:bg-amber-950 flex items-center justify-center">
+        <div className="w-[15px] h-[15px] border-2 rounded-[5px] flex items-center justify-center" style={{ borderColor: '#C8841F' }}>
+          <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
+            <path d="M1 3L3 5L7 1" stroke="#C8841F" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+      </div>
+    ),
+    title: 'Tasks that nudge you',
+    desc: 'Overdue, today, upcoming - grouped automatically and surfaced on your dashboard so nothing quietly slips.',
+  },
+  {
+    icon: (
+      <div className="w-[38px] h-[38px] rounded-[10px] bg-[#E7F3EC] dark:bg-emerald-950 flex items-center justify-center text-emerald-600 dark:text-emerald-400 text-lg">
+        ✉
+      </div>
+    ),
+    title: 'Gmail, synced',
+    desc: 'Conversations land on the right contact automatically, so the whole team sees one honest thread of activity.',
+  },
+  {
+    icon: (
+      <div className="w-[38px] h-[38px] rounded-[10px] bg-[#E9EEF6] dark:bg-blue-950 flex items-center justify-center">
+        <span className="w-[13px] h-[13px] rounded-full bg-[#2E72C8]" />
+        <span className="w-[13px] h-[13px] rounded-full -ml-[5px]" style={{ background: 'rgba(46,114,200,0.45)' }} />
+      </div>
+    ),
+    title: 'Built for a team',
+    desc: "Invite the whole crew, share one workspace, and always know who's talking to whom. Per-seat pricing, no surprises.",
+  },
+  {
+    icon: (
+      <div className="w-[38px] h-[38px] rounded-[10px] bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+        <svg width="17" height="17" viewBox="0 0 17 17" fill="none">
+          <circle cx="8.5" cy="8.5" r="6" stroke="#8A8275" strokeWidth="2" strokeLinecap="round" strokeDasharray="11 8" />
+        </svg>
+      </div>
+    ),
+    title: 'Gentle automations',
+    desc: 'Stale-deal alerts, follow-up reminders and auto-logged emails. Helpful prompts, never a rules engine to babysit.',
+  },
+]
 
 export default function Home() {
   const { isDark, toggle } = useDarkModeStore()
   const user      = useAuthStore(s => s.user)
   const isLoading = useAuthStore(s => s.isLoading)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-
   const isLoggedIn = !isLoading && !!user
 
   return (
-    <div className="h-[100dvh] overflow-y-auto bg-white dark:bg-gray-950 font-sans flex flex-col transition-colors
+    <div className="font-display h-[100dvh] overflow-y-auto bg-white dark:bg-gray-950 overflow-x-hidden transition-colors
       [&::-webkit-scrollbar]:w-1.5
       [&::-webkit-scrollbar-track]:bg-transparent
       [&::-webkit-scrollbar-thumb]:bg-gray-300
@@ -145,22 +192,22 @@ export default function Home() {
       dark:[&::-webkit-scrollbar-thumb]:bg-gray-600
       dark:[&::-webkit-scrollbar-thumb:hover]:bg-gray-500">
 
-      {/* ── Navbar ── */}
-      <header className="sticky top-0 z-40 w-full border-b border-gray-100 dark:border-gray-800 bg-white/90 dark:bg-gray-950/90 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
-            <img src="/favicon.svg" alt="Deskly" className="w-7 h-7 shrink-0" />
-            <span className="text-base font-semibold text-gray-900 dark:text-white tracking-tight">Deskly</span>
-          </Link>
+      {/* ── NAV ── */}
+      <nav className="sticky top-0 z-20 bg-white/90 dark:bg-gray-950/90 backdrop-blur-md border-b border-gray-100 dark:border-gray-800">
+        <div className="max-w-[1120px] mx-auto px-4 sm:px-8 py-[14px] flex items-center justify-between">
+          <div className="flex items-center gap-[34px]">
+            <Link to="/" className="flex items-center gap-2.5">
+              <img src="/favicon.svg" alt="Deskly" className="w-7 h-7 shrink-0" />
+              <span className="text-[17px] font-bold tracking-tight text-gray-900 dark:text-white">Deskly</span>
+            </Link>
+            <div className="hidden md:flex items-center gap-[26px]">
+              <a href="#features" className="text-[14px] font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Features</a>
+              <a href="#pricing" className="text-[14px] font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Pricing</a>
+              <a href="#testimonial" className="text-[14px] font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Customers</a>
+            </div>
+          </div>
 
-          <nav className="hidden md:flex items-center gap-6 text-sm text-gray-600 dark:text-gray-400">
-            <a href="#features" className="hover:text-gray-900 dark:hover:text-white transition-colors">Features</a>
-            <a href="#pricing" className="hover:text-gray-900 dark:hover:text-white transition-colors">Pricing</a>
-            <a href="#how-to" className="hover:text-gray-900 dark:hover:text-white transition-colors">How To</a>
-            <Link to="/contact" className="hover:text-gray-900 dark:hover:text-white transition-colors">Contact</Link>
-          </nav>
-
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <button
               onClick={toggle}
               title={isDark ? 'Light mode' : 'Dark mode'}
@@ -169,20 +216,20 @@ export default function Home() {
               {isDark ? <SunIcon /> : <MoonIcon />}
             </button>
             {isLoggedIn ? (
-              <Link to="/dashboard" className="px-3.5 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
-                Go to App →
+              <Link to="/dashboard" className="hidden sm:block px-3 py-2 text-[14px] font-semibold text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                Go to App
               </Link>
             ) : (
-              <>
-                <Link to="/login" className="hidden sm:block px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">
-                  Sign in
-                </Link>
-                <Link to="/signup" className="px-3.5 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm">
-                  Start free →
-                </Link>
-              </>
+              <Link to="/login" className="hidden sm:block px-3 py-2 text-[14px] font-semibold text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
+                Log in
+              </Link>
             )}
-            {/* Hamburger - mobile only */}
+            <Link
+              to={isLoggedIn ? '/dashboard' : '/signup'}
+              className="bg-primary-600 hover:bg-primary-700 text-white text-[14px] font-semibold py-[9px] px-4 rounded-lg transition-colors"
+            >
+              {isLoggedIn ? 'Go to App' : 'Start free'}
+            </Link>
             <button
               onClick={() => setMobileMenuOpen(o => !o)}
               className="md:hidden p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -201,402 +248,175 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Mobile menu */}
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-950 px-4 py-3 flex flex-col gap-1">
             <a href="#features" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Features</a>
             <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Pricing</a>
-            <a href="#how-to" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">How To</a>
-            <Link to="/contact" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Contact</Link>
-            <Link to="/terms" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Terms</Link>
-            <Link to="/privacy" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Privacy</Link>
-            <a href="mailto:support@desklycrm.com" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">support@desklycrm.com</a>
+            <a href="#testimonial" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Customers</a>
+            <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">Log in</Link>
           </div>
         )}
-      </header>
+      </nav>
 
-      <main className="flex-1">
+      {/* ── HERO ── */}
+      <section className="max-w-[1120px] mx-auto px-4 sm:px-8 pt-[74px] text-center">
+        <span className="inline-flex items-center gap-2 font-mono text-xs tracking-[0.04em] text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950 border border-primary-100 dark:border-primary-900 rounded-full px-[14px] py-[6px]">
+          ● The CRM for small teams
+        </span>
 
-        {/* ── Hero ── */}
-        <section className="max-w-6xl mx-auto px-4 sm:px-6 pt-16 pb-24 text-center">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary-50 dark:bg-primary-950 border border-primary-100 dark:border-primary-900 rounded-full text-xs font-semibold text-primary-700 dark:text-primary-300 mb-6">
-            <span className="w-1.5 h-1.5 rounded-full bg-primary-500 animate-pulse" />
-            Free to start · No credit card required
-          </div>
+        <h1 className="text-[clamp(36px,5.5vw,62px)] leading-[1.04] tracking-[-0.035em] font-bold mt-[26px] mx-auto max-w-[780px] text-gray-900 dark:text-white">
+          The CRM that keeps your whole team organized.
+        </h1>
 
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 dark:text-white tracking-tight max-w-3xl mx-auto leading-[1.1] mb-5">
-            Simple CRM for{' '}
-            <span className="text-primary-600 dark:text-primary-400">small teams</span>
-          </h1>
+        <p className="text-[20px] leading-[1.6] text-gray-700 dark:text-gray-300 mt-6 mx-auto max-w-[580px]">
+          Contacts, deals, and tasks in one calm place. Deskly is built for teams of two to twenty who want their day organized - not another enterprise platform to manage.
+        </p>
 
-          <p className="text-lg sm:text-xl text-gray-500 dark:text-gray-400 max-w-2xl mx-auto mb-8 leading-relaxed">
-            Stop overpaying for bloated CRMs. Manage contacts, deals, and tasks in one place -
-            with Gmail sync and smart automations built in.
-          </p>
+        <div className="flex items-center justify-center gap-3 mt-[34px] flex-wrap">
+          <Link
+            to={isLoggedIn ? '/dashboard' : '/signup'}
+            className="bg-primary-600 hover:bg-primary-700 text-white text-[15.5px] font-semibold py-[13px] px-6 rounded-lg transition-colors"
+          >
+            {isLoggedIn ? 'Go to App' : 'Start free - 14 days'}
+          </Link>
+          <a
+            href="#features"
+            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white text-[15.5px] font-semibold py-[13px] px-[22px] rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            See a live demo
+          </a>
+        </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-10">
-            {isLoggedIn ? (
-              <Link
-                to="/dashboard"
-                className="w-full sm:w-auto flex items-center justify-center gap-2 px-7 py-3.5 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-xl text-base transition-colors shadow-lg shadow-primary-200 dark:shadow-primary-950"
-              >
-                Go to App
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                </svg>
-              </Link>
-            ) : (
-              <>
-                <Link
-                  to="/signup"
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-7 py-3.5 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-xl text-base transition-colors shadow-lg shadow-primary-200 dark:shadow-primary-950"
-                >
-                  Start Free Trial
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                  </svg>
-                </Link>
-                <Link
-                  to="/login"
-                  className="w-full sm:w-auto px-7 py-3.5 text-base font-semibold text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
-                >
-                  Sign in to your account
-                </Link>
-              </>
-            )}
-          </div>
+        <p className="font-mono text-xs text-gray-400 dark:text-gray-500 mt-4">No credit card · $10 / user / month after trial</p>
 
-          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-gray-400 dark:text-gray-500 mb-16">
-            {['Free to start', 'No credit card required', 'Set up in 5 minutes'].map(item => (
-              <span key={item} className="flex items-center gap-1.5">
-                <Check className="w-3.5 h-3.5 text-emerald-500" />
-                {item}
-              </span>
-            ))}
-          </div>
+        <div className="mt-[54px]">
+          <DashboardMockup />
+        </div>
 
-          {/* App mockup */}
-          <AppMockup />
-        </section>
+        <p className="font-mono text-[11.5px] text-gray-400 dark:text-gray-500 mt-[26px]">Trusted by 1,200+ small teams · 4.8★ average rating</p>
+      </section>
 
-        {/* ── Problem / Solution ── */}
-        <section className="bg-gray-50 dark:bg-gray-900 border-y border-gray-100 dark:border-gray-800 py-20">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
-                Tired of complex CRMs?
-              </h2>
-              <p className="text-gray-500 dark:text-gray-400 text-lg max-w-xl mx-auto">
-                You shouldn't need a 3-week onboarding just to track your deals.
-              </p>
-            </div>
-
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Pain points */}
-              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-6">
-                <p className="text-xs font-bold uppercase tracking-widest text-red-500 mb-4">The old way</p>
-                <div className="space-y-4">
-                  {[
-                    { name: 'Salesforce', desc: '$75/user/mo · Takes weeks to set up · Needs a dedicated admin' },
-                    { name: 'HubSpot',    desc: '"Free" until you hit limits · Then $90/user/mo · Hidden fees' },
-                    { name: 'Spreadsheets', desc: 'Messy, no automation · Hard to collaborate · Data gets lost' },
-                  ].map(p => (
-                    <div key={p.name} className="flex items-start gap-3">
-                      <span className="mt-0.5 text-lg leading-none">❌</span>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white">{p.name}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{p.desc}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Deskly */}
-              <div className="bg-primary-600 rounded-2xl p-6 text-white relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary-500/30 to-transparent pointer-events-none" />
-                <p className="text-xs font-bold uppercase tracking-widest text-primary-200 mb-4 relative">With Deskly</p>
-                <div className="space-y-4 relative">
-                  {[
-                    { check: '✅', title: '$10/user/mo', desc: 'Flat pricing, no surprises. Everything included.' },
-                    { check: '✅', title: 'Set up in 5 minutes', desc: 'Guided onboarding. Invite your team the same day.' },
-                    { check: '✅', title: 'Everything you need', desc: 'Contacts, deals, tasks, Gmail sync, automations.' },
-                  ].map(s => (
-                    <div key={s.title} className="flex items-start gap-3">
-                      <span className="mt-0.5 text-lg leading-none">{s.check}</span>
-                      <div>
-                        <p className="text-sm font-bold text-white">{s.title}</p>
-                        <p className="text-xs text-primary-200 mt-0.5">{s.desc}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Price tag */}
-                <div className="mt-6 pt-4 border-t border-primary-500/50 relative">
-                  <p className="text-4xl font-black text-white">$10</p>
-                  <p className="text-primary-200 text-sm">per user / month</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Features ── */}
-        <section id="features" className="max-w-5xl mx-auto px-4 sm:px-6 py-20">
-          <div className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
-              Everything you need. Nothing you don't.
-            </h2>
-            <p className="text-gray-500 dark:text-gray-400 text-lg max-w-xl mx-auto">
-              Built for sales teams who want results, not complexity.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6">
-            {[
-              {
-                icon: '📧',
-                title: 'Gmail Integration',
-                desc: 'Emails automatically log to contacts. Every thread, every context - right where you need it.',
-                bullets: ['Auto-sync last 30 days', 'Match emails to contacts', 'Create deals from emails'],
-                accent: 'from-blue-50 to-primary-50 dark:from-blue-950/30 dark:to-primary-950/30',
-                border: 'border-blue-100 dark:border-blue-900/50',
-              },
-              {
-                icon: '⚙️',
-                title: 'Smart Automations',
-                desc: 'Auto-create tasks, get alerts when deals go cold, follow up at the right time. Work smarter.',
-                bullets: ['6 pre-built automations', 'Toggle on/off instantly', 'In-app notifications'],
-                accent: 'from-violet-50 to-purple-50 dark:from-violet-950/30 dark:to-purple-950/30',
-                border: 'border-violet-100 dark:border-violet-900/50',
-              },
-              {
-                icon: '📊',
-                title: 'Visual Pipeline',
-                desc: 'See every deal at a glance. Drag cards between stages. Know exactly where every opportunity stands.',
-                bullets: ['6-stage Kanban board', 'Drag & drop deals', 'Pipeline value at a glance'],
-                accent: 'from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30',
-                border: 'border-emerald-100 dark:border-emerald-900/50',
-              },
-            ].map(f => (
-              <div key={f.title} className={`rounded-2xl border ${f.border} bg-gradient-to-br ${f.accent} p-6 flex flex-col`}>
-                <div className="text-3xl mb-4">{f.icon}</div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{f.title}</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 leading-relaxed flex-1">{f.desc}</p>
-                <ul className="space-y-1.5">
-                  {f.bullets.map(b => (
-                    <li key={b} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
-                      <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                      {b}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* ── Social proof / Testimonials ── */}
-        <section className="bg-gray-50 dark:bg-gray-900 border-y border-gray-100 dark:border-gray-800 py-20">
-          <div className="max-w-5xl mx-auto px-4 sm:px-6">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">
-                Loved by small teams
-              </h2>
-              <p className="text-gray-500 dark:text-gray-400">Here's what our beta users are saying.</p>
-            </div>
-
-            <div className="grid md:grid-cols-3 gap-5 mb-12">
-              {[
-                {
-                  quote: "We switched from HubSpot and cut our CRM costs by 80%. Deskly does everything we actually need - without the bloat.",
-                  author: 'Sarah M.',
-                  role: 'Founder, Brightline Agency',
-                  avatar: 'S',
-                  color: 'bg-violet-100 dark:bg-violet-950 text-violet-700 dark:text-violet-300',
-                },
-                {
-                  quote: "The Gmail sync is a game changer. I can see every email thread right next to the contact's deal. No more context switching.",
-                  author: 'James K.',
-                  role: 'Sales Lead, TechFlow',
-                  avatar: 'J',
-                  color: 'bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300',
-                },
-                {
-                  quote: "Set up in 20 minutes and my whole team was using it by end of day. I've never said that about any other CRM.",
-                  author: 'Priya R.',
-                  role: 'CEO, Nova Creative',
-                  avatar: 'P',
-                  color: 'bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300',
-                },
-              ].map(t => (
-                <div key={t.author} className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-5 flex flex-col">
-                  <div className="flex mb-3">
-                    {[...Array(5)].map((_, i) => (
-                      <svg key={i} className="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                      </svg>
-                    ))}
-                  </div>
-                  <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed flex-1 mb-4">
-                    "{t.quote}"
-                  </p>
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-8 h-8 rounded-full ${t.color} flex items-center justify-center text-sm font-bold shrink-0`}>
-                      {t.avatar}
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-gray-900 dark:text-white">{t.author}</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500">{t.role}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Stats row */}
-            <div className="grid grid-cols-3 gap-6 text-center">
-              {[
-                { value: '500+', label: 'Teams using Deskly' },
-                { value: '4.9 ★', label: 'Average rating' },
-                { value: '< 5 min', label: 'Average setup time' },
-              ].map(s => (
-                <div key={s.value}>
-                  <p className="text-3xl font-black text-gray-900 dark:text-white">{s.value}</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{s.label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* ── Pricing ── */}
-        <section id="pricing" className="max-w-4xl mx-auto px-4 sm:px-6 py-20 text-center">
-          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
-            Simple, transparent pricing
+      {/* ── FEATURES ── */}
+      <section id="features" className="max-w-[1120px] mx-auto px-4 sm:px-8 pt-24">
+        <div className="text-center max-w-[600px] mx-auto">
+          <span className="font-mono text-xs tracking-[0.12em] uppercase text-gray-400 dark:text-gray-500">Everything, organized</span>
+          <h2 className="text-[clamp(28px,3.2vw,38px)] leading-[1.12] tracking-[-0.03em] font-bold mt-3.5 text-gray-900 dark:text-white">
+            Six things your team does daily - finally in one calm place.
           </h2>
-          <p className="text-gray-500 dark:text-gray-400 text-lg mb-10">
-            One plan. Everything included. No hidden fees.
-          </p>
+        </div>
 
-          <div className="max-w-sm mx-auto bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-lg overflow-hidden">
-            {/* Badge */}
-            <div className="bg-primary-600 px-4 py-2 text-center">
-              <span className="text-xs font-bold text-primary-100 uppercase tracking-widest">Free Trial - 14 Days</span>
-            </div>
-
-            <div className="p-8">
-              <div className="mb-6">
-                <div className="flex items-end justify-center gap-1 mb-1">
-                  <span className="text-5xl font-black text-gray-900 dark:text-white">$10</span>
-                  <span className="text-gray-400 dark:text-gray-500 mb-2">/user/mo</span>
-                </div>
-                <p className="text-sm text-gray-400 dark:text-gray-500">After your free trial</p>
-              </div>
-
-              <ul className="space-y-3 mb-8 text-left">
-                {[
-                  'Unlimited contacts & deals',
-                  'Kanban deal pipeline',
-                  'Task management',
-                  'Gmail integration & sync',
-                  '6 smart automations',
-                  'In-app notification inbox',
-                  'CSV import & export',
-                  'Team member invitations',
-                  'Email & chat support',
-                ].map(feature => (
-                  <li key={feature} className="flex items-center gap-2.5 text-sm text-gray-700 dark:text-gray-300">
-                    <Check className="w-4 h-4 text-emerald-500 shrink-0" />
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-
-              <Link
-                to={isLoggedIn ? '/dashboard' : '/signup'}
-                className="block w-full py-3.5 bg-primary-600 hover:bg-primary-700 text-white font-bold rounded-xl transition-colors text-center text-sm shadow-sm"
-              >
-                {isLoggedIn ? 'Go to App →' : 'Start Free Trial →'}
-              </Link>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">No credit card required</p>
-            </div>
-          </div>
-        </section>
-
-        {/* ── How To ── */}
-        <section id="how-to" className="max-w-5xl mx-auto px-4 sm:px-6 py-20">
-          <div className="text-center mb-14">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-primary-50 dark:bg-primary-950 border border-primary-100 dark:border-primary-900 rounded-full text-xs font-semibold text-primary-700 dark:text-primary-300 mb-5">
-              Get started in 5 minutes
-            </div>
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-4">
-              How to use Deskly
-            </h2>
-            <p className="text-gray-500 dark:text-gray-400 text-lg max-w-xl mx-auto">
-              Watch the tutorial below to get up and running in minutes.
-            </p>
-          </div>
-
-          {/* Video placeholder */}
-          <div className="relative w-full rounded-2xl overflow-hidden border-2 border-dashed border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900" style={{ paddingBottom: '56.25%' }}>
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-center px-6">
-              <div className="w-16 h-16 rounded-full bg-primary-100 dark:bg-primary-950 flex items-center justify-center">
-                <svg className="w-7 h-7 text-primary-600 dark:text-primary-400 ml-1" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                </svg>
-              </div>
-              <div>
-                <p className="text-base font-semibold text-gray-900 dark:text-white mb-1">Tutorial coming soon</p>
-                <p className="text-sm text-gray-400 dark:text-gray-500 max-w-sm">
-                  A full walkthrough video will be added here shortly.
-                </p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* ── Final CTA ── */}
-        <section className="bg-primary-600 py-20 px-4">
-          <div className="max-w-3xl mx-auto text-center">
-            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-              Ready to close more deals?
-            </h2>
-            <p className="text-primary-200 text-lg mb-8">
-              Join 500+ teams who switched from bloated CRMs to Deskly.
-              Set up in minutes, not weeks.
-            </p>
-            <Link
-              to={isLoggedIn ? '/dashboard' : '/signup'}
-              className="inline-flex items-center gap-2 px-8 py-4 bg-white hover:bg-gray-50 text-primary-700 font-bold rounded-xl text-base transition-colors shadow-lg"
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-[18px] mt-12">
+          {features.map(f => (
+            <div
+              key={f.title}
+              className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6
+                hover:shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_rgba(15,23,42,0.06)]
+                hover:-translate-y-0.5 hover:border-gray-400 dark:hover:border-gray-600 transition-all duration-200"
             >
-              {isLoggedIn ? 'Go to App' : 'Get Started Free'}
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-              </svg>
-            </Link>
-            <p className="text-primary-300 text-sm mt-4">Free 14-day trial · No credit card · Cancel anytime</p>
-          </div>
-        </section>
-      </main>
+              {f.icon}
+              <p className="text-[16.5px] font-bold mt-[18px] tracking-[-0.01em] text-gray-900 dark:text-white">{f.title}</p>
+              <p className="text-[14px] text-gray-500 dark:text-gray-400 leading-[1.6] mt-2">{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
-      {/* ── Footer ── */}
-      <footer className="bg-white dark:bg-gray-950 border-t border-gray-100 dark:border-gray-800 py-8 px-4">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <img src="/favicon.svg" alt="Deskly" className="w-6 h-6 shrink-0" />
-            <span className="text-sm font-semibold text-gray-900 dark:text-white">Deskly</span>
-          </div>
-          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-xs text-gray-400 dark:text-gray-500">
-            <Link to="/contact" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Contact</Link>
-            <Link to="/privacy" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Privacy</Link>
-            <Link to="/terms" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Terms</Link>
-            <a href="mailto:support@desklycrm.com" className="hover:text-gray-600 dark:hover:text-gray-300 transition-colors">Support</a>
-            <span>© {new Date().getFullYear()} Deskly</span>
+      {/* ── TESTIMONIAL ── */}
+      <section id="testimonial" className="max-w-[1120px] mx-auto px-4 sm:px-8 pt-[90px]">
+        <div className="bg-gray-900 dark:bg-gray-800 rounded-2xl px-8 sm:px-14 py-16 text-center">
+          <p className="text-[clamp(18px,2.4vw,28px)] leading-[1.4] tracking-[-0.015em] font-semibold max-w-[760px] mx-auto text-gray-100">
+            "We tried the big-name CRMs and spent more time configuring than selling. Deskly we set up in an afternoon - now the whole team just{' '}
+            <span className="text-primary-400">opens it every morning</span>."
+          </p>
+          <div className="flex items-center justify-center gap-3 mt-[30px]">
+            <div className="w-10 h-10 rounded-full bg-primary-600 flex items-center justify-center text-sm font-bold text-white shrink-0">JM</div>
+            <div className="text-left">
+              <p className="text-[14.5px] font-semibold text-gray-100">Julia Marchetti</p>
+              <p className="text-[13px] text-gray-400 mt-0.5">Founder, Northwind Studio · 9 people</p>
+            </div>
           </div>
         </div>
+      </section>
+
+      {/* ── PRICING ── */}
+      <section id="pricing" className="max-w-[1120px] mx-auto px-4 sm:px-8 pt-[90px]">
+        <div className="text-center max-w-[560px] mx-auto">
+          <span className="font-mono text-xs tracking-[0.12em] uppercase text-gray-400 dark:text-gray-500">Pricing</span>
+          <h2 className="text-[clamp(28px,3.2vw,38px)] leading-[1.12] tracking-[-0.03em] font-bold mt-3.5 text-gray-900 dark:text-white">
+            One honest plan. That's the whole menu.
+          </h2>
+          <p className="text-[17px] text-gray-700 dark:text-gray-300 leading-[1.6] mt-3.5">
+            No "contact sales," no tiers designed to upsell you. Everything Deskly does, for everyone on your team.
+          </p>
+        </div>
+
+        <div className="max-w-[440px] mx-auto mt-11 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.04),0_10px_30px_rgba(15,23,42,0.06)]">
+          <div className="px-8 pt-[30px] pb-[26px] border-b border-gray-100 dark:border-gray-800">
+            <div className="flex items-center justify-between">
+              <span className="text-[16px] font-bold text-gray-900 dark:text-white">Deskly for Teams</span>
+              <span className="font-mono text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950 rounded-full px-[11px] py-1">
+                14-DAY TRIAL
+              </span>
+            </div>
+            <div className="flex items-baseline gap-1.5 mt-[18px]">
+              <span className="text-[48px] font-bold tracking-[-0.03em] text-gray-900 dark:text-white tabular-nums">$10</span>
+              <span className="text-[15px] text-gray-500 dark:text-gray-400">/ user / month</span>
+            </div>
+            <Link
+              to={isLoggedIn ? '/dashboard' : '/signup'}
+              className="block text-center mt-[22px] bg-primary-600 hover:bg-primary-700 text-white text-[15px] font-semibold py-[13px] rounded-lg transition-colors"
+            >
+              Start your free trial
+            </Link>
+          </div>
+
+          <div className="px-8 pt-[26px] pb-[30px] flex flex-col gap-[13px]">
+            {[
+              'Unlimited contacts, deals & tasks',
+              'Kanban pipeline & activity timelines',
+              'Gmail sync & gentle automations',
+              'Every team member, one flat price',
+              'Dark mode, and a real human on support',
+            ].map(feature => (
+              <div key={feature} className="flex items-center gap-[11px]">
+                <span className="text-emerald-600 dark:text-emerald-400 text-[15px] shrink-0">✓</span>
+                <span className="text-[14.5px] text-gray-700 dark:text-gray-300">{feature}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA ── */}
+      <section className="max-w-[1120px] mx-auto px-4 sm:px-8 pt-24 text-center">
+        <h2 className="text-[clamp(32px,3.8vw,44px)] leading-[1.08] tracking-[-0.03em] font-bold max-w-[620px] mx-auto text-gray-900 dark:text-white">
+          Get organized this afternoon.
+        </h2>
+        <p className="text-[18px] text-gray-700 dark:text-gray-300 mt-[18px] mx-auto max-w-[480px] leading-[1.6]">
+          Bring your contacts in, set up your pipeline, and invite the team. It really does take one afternoon.
+        </p>
+        <Link
+          to={isLoggedIn ? '/dashboard' : '/signup'}
+          className="inline-block mt-[30px] bg-primary-600 hover:bg-primary-700 text-white text-[16px] font-semibold py-3.5 px-7 rounded-lg transition-colors"
+        >
+          Start free - 14 days
+        </Link>
+      </section>
+
+      {/* ── FOOTER ── */}
+      <footer className="max-w-[1120px] mx-auto px-4 sm:px-8 mt-20 pt-10 pb-14 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between flex-wrap gap-[18px]">
+        <div className="flex items-center gap-2.5">
+          <img src="/favicon.svg" alt="Deskly" className="w-6 h-6 shrink-0" />
+          <span className="text-[14px] font-bold text-gray-900 dark:text-white">Deskly</span>
+          <span className="text-[13px] text-gray-400 dark:text-gray-500 ml-2">© {new Date().getFullYear()} · A calmer CRM</span>
+        </div>
+        <div className="flex gap-[22px]">
+          <Link to="/privacy" className="text-[13px] text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Privacy</Link>
+          <Link to="/terms" className="text-[13px] text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Terms</Link>
+          <Link to="/contact" className="text-[13px] text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Contact</Link>
+        </div>
       </footer>
+
     </div>
   )
 }

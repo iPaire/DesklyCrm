@@ -7,18 +7,17 @@
 //  4. Add authorized redirect URI: http://localhost:5173/settings/gmail/callback
 //  5. Add to .env:
 //       VITE_GOOGLE_CLIENT_ID=your_client_id
-//       VITE_GOOGLE_CLIENT_SECRET=your_client_secret   ← keep backend-only in production
-//
-// Note: In production, the token exchange (exchangeCode / refreshAccessToken)
-// should be proxied through a backend endpoint to keep the client_secret secure.
+//  6. Add to Supabase secrets (NOT as VITE_ vars):
+//       GOOGLE_CLIENT_ID=your_client_id
+//       GOOGLE_CLIENT_SECRET=your_client_secret
 // ─────────────────────────────────────────────────────────────────────────────
 
-const CLIENT_ID     = import.meta.env.VITE_GOOGLE_CLIENT_ID as string
-const CLIENT_SECRET = import.meta.env.VITE_GOOGLE_CLIENT_SECRET as string
-const REDIRECT_URI  = `${window.location.origin}/settings/gmail/callback`
+import { supabase } from './supabase'
+
+const CLIENT_ID    = import.meta.env.VITE_GOOGLE_CLIENT_ID as string
+const REDIRECT_URI = `${window.location.origin}/settings/gmail/callback`
 
 const AUTH_URL  = 'https://accounts.google.com/o/oauth2/v2/auth'
-const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me'
 
 // ── OAuth URL ─────────────────────────────────────────────────────────────────
@@ -49,44 +48,26 @@ export interface TokenResponse {
 }
 
 // ── Token exchange (authorization code → tokens) ──────────────────────────────
+// Proxied through gmail-token Edge Function - client_secret never leaves the server.
 
 export async function exchangeCode(code: string): Promise<TokenResponse> {
-  const res = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      code,
-      client_id:     CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      redirect_uri:  REDIRECT_URI,
-      grant_type:    'authorization_code',
-    }),
+  const { data, error } = await supabase.functions.invoke('gmail-token', {
+    body: { action: 'exchange', code, redirect_uri: REDIRECT_URI },
   })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Token exchange failed: ${text}`)
-  }
-  return res.json()
+  if (error) throw new Error(`Token exchange failed: ${error.message}`)
+  if (data?.error) throw new Error(`Token exchange failed: ${data.error}`)
+  return data as TokenResponse
 }
 
 // ── Token refresh ─────────────────────────────────────────────────────────────
 
 export async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
-  const res = await fetch(TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id:     CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      refresh_token: refreshToken,
-      grant_type:    'refresh_token',
-    }),
+  const { data, error } = await supabase.functions.invoke('gmail-token', {
+    body: { action: 'refresh', refresh_token: refreshToken },
   })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Token refresh failed: ${text}`)
-  }
-  return res.json()
+  if (error) throw new Error(`Token refresh failed: ${error.message}`)
+  if (data?.error) throw new Error(`Token refresh failed: ${data.error}`)
+  return data as TokenResponse
 }
 
 // ── Gmail profile ─────────────────────────────────────────────────────────────

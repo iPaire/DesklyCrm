@@ -30,6 +30,8 @@ export default function Signup() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [marketingConsent, setMarketingConsent] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -55,6 +57,8 @@ export default function Signup() {
       setError(authError.message)
     } else {
       localStorage.setItem('deskly-new-user', '1')
+      localStorage.setItem('deskly-consent-v1', '1')
+      localStorage.setItem('deskly-marketing-v1', marketingConsent ? '1' : '0')
       setSuccess(true)
     }
     setIsLoading(false)
@@ -127,7 +131,7 @@ export default function Signup() {
               type="button"
               onClick={handleGoogle}
               disabled={googleLoading || isLoading}
-              className="w-full flex items-center justify-center gap-3 px-4 py-2.5 mb-5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors disabled:opacity-60"
+              className="w-full flex items-center justify-center gap-3 px-4 py-2.5 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/60 transition-colors disabled:opacity-60"
             >
               {googleLoading ? (
                 <span className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
@@ -141,6 +145,12 @@ export default function Signup() {
               )}
               Continue with Google
             </button>
+            <p className="text-[11px] text-center text-gray-400 dark:text-gray-500 mt-2.5 mb-5">
+              By continuing, you agree to our{' '}
+              <Link to="/terms" target="_blank" rel="noopener" className="underline hover:text-gray-600 dark:hover:text-gray-300">Terms</Link>
+              {' '}and{' '}
+              <Link to="/privacy" target="_blank" rel="noopener" className="underline hover:text-gray-600 dark:hover:text-gray-300">Privacy Policy</Link>
+            </p>
 
             <div className="flex items-center gap-3 mb-5">
               <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
@@ -188,9 +198,43 @@ export default function Signup() {
                 )}
               </div>
 
+              <div className="space-y-3 pt-1">
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={termsAccepted}
+                    onChange={e => setTermsAccepted(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-primary-600 shrink-0"
+                  />
+                  <span className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                    I agree to the{' '}
+                    <Link to="/terms" target="_blank" rel="noopener" className="text-primary-600 dark:text-primary-400 font-medium hover:underline">
+                      Terms of Service
+                    </Link>{' '}
+                    and{' '}
+                    <Link to="/privacy" target="_blank" rel="noopener" className="text-primary-600 dark:text-primary-400 font-medium hover:underline">
+                      Privacy Policy
+                    </Link>
+                    <span className="text-red-500 ml-0.5">*</span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={marketingConsent}
+                    onChange={e => setMarketingConsent(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-primary-600 shrink-0"
+                  />
+                  <span className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+                    Send me product updates and tips from Deskly{' '}
+                    <span className="text-gray-400 dark:text-gray-500">(optional)</span>
+                  </span>
+                </label>
+              </div>
+
               <button
-                type="submit" disabled={isLoading}
-                className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-60 flex items-center justify-center gap-2 mt-1"
+                type="submit" disabled={isLoading || !termsAccepted}
+                className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-1"
               >
                 {isLoading && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
                 {isLoading ? 'Creating account...' : 'Create account'}

@@ -1,27 +1,50 @@
 // Supabase Edge Function - send-invite
 // Sends a team invitation email via Resend.
-// Requires secret: RESEND_API_KEY
+// Requires secrets: RESEND_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+// Optional:         UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN (rate limiting)
 // Deploy: supabase functions deploy send-invite
 
-const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { rateLimit, tooManyRequests } from '../_shared/rate-limit.ts'
+
+const RESEND_API_KEY    = Deno.env.get('RESEND_API_KEY')!
+const SUPABASE_URL      = Deno.env.get('SUPABASE_URL')!
+const SUPABASE_SVC_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SVC_KEY)
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin':  '*',
+  'Access-Control-Allow-Headers': 'authorization, content-type',
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'authorization, content-type',
-      },
-    })
+    return new Response('ok', { headers: corsHeaders })
   }
 
   try {
+    // Authenticate caller - only logged-in users can send invites
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
+    }
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authErr } = await supabase.auth.getUser(token)
+    if (authErr || !user) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
+    }
+
+    // Rate limit: 20 invite emails per hour per user (prevents spam)
+    const rl = await rateLimit(`rl:invite:${user.id}`, 20, 3600)
+    if (!rl.allowed) return tooManyRequests('Too many invite emails. Please try again later.', corsHeaders)
+
     const { email, inviteToken, inviterEmail, teamName, siteUrl } = await req.json()
 
     if (!email || !inviteToken || !siteUrl) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
@@ -95,8 +118,8 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Deskly <noreply@desklycrm.com>',
-        to: email,
+        from:    'Deskly <noreply@desklycrm.com>',
+        to:      email,
         subject: `${inviterEmail} invited you to join Deskly`,
         html,
       }),
@@ -107,19 +130,19 @@ Deno.serve(async (req) => {
       console.error('Resend error:', body)
       return new Response(JSON.stringify({ error: body.message ?? 'Email failed' }), {
         status: 500,
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {
     console.error('send-invite error:', err)
     return new Response(JSON.stringify({ error: 'Internal error' }), {
       status: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 })
