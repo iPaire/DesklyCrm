@@ -1,8 +1,10 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
-import type { Contact, Deal, Task, EmailLog, ActivityLog, GmailConnection } from '../types'
+import type { Contact, Deal, Task, EmailLog, ActivityLog, GmailConnection } from '../types/index'
+import { fetchContactDetail } from '../lib/queries'
 import { ContactModal } from '../components/ContactModal'
 import { EmailLogModal } from '../components/EmailLogModal'
 import { Toast } from '../components/Toast'
@@ -232,10 +234,30 @@ export default function ContactDetail() {
   const [gmailConn,      setGmailConn]      = useState<GmailConnection | null>(null)
   const [isSyncing,      setIsSyncing]      = useState(false)
 
+  const { data: queryData, isError: queryError } = useQuery({
+    queryKey: ['contact-detail', id],
+    queryFn: () => fetchContactDetail(id!, user!.id),
+    enabled: !!id && !!user,
+  })
+
   useEffect(() => {
-    if (!id) return
-    loadAll(id)
-  }, [id])
+    if (queryError) navigate('/contacts')
+  }, [queryError, navigate])
+
+  const initializedRef = useRef(false)
+  useEffect(() => {
+    if (queryData && !initializedRef.current) {
+      setContact(queryData.contact)
+      setEmails(queryData.emails)
+      setActivityLogs(queryData.activityLogs)
+      setDeals(queryData.deals)
+      setTasks(queryData.tasks)
+      setAllContacts(queryData.allContacts)
+      setGmailConn(queryData.gmailConn)
+      setLoading(false)
+      initializedRef.current = true
+    }
+  }, [queryData])
 
   const timelineEntries = useMemo<TimelineEntry[]>(() => {
     const entries: TimelineEntry[] = [
@@ -251,34 +273,6 @@ export default function ContactDetail() {
     if (timelineFilter === 'all') return timelineEntries
     return timelineEntries.filter(e => e.kind === timelineFilter)
   }, [timelineEntries, timelineFilter])
-
-  const loadAll = async (contactId: string) => {
-    setLoading(true)
-
-    const [contactRes, emailsRes, activityRes, dealsRes, tasksRes, allContactsRes, gmailRes] = await Promise.all([
-      supabase.from('contacts').select('*').eq('id', contactId).single(),
-      supabase.from('email_logs').select('*').eq('contact_id', contactId).order('received_at', { ascending: false }),
-      supabase.from('activity_logs').select('*').eq('contact_id', contactId).order('created_at', { ascending: false }),
-      supabase.from('deals').select('*').eq('contact_id', contactId).order('created_at', { ascending: false }),
-      supabase.from('tasks').select('*').eq('contact_id', contactId).order('created_at', { ascending: false }),
-      supabase.from('contacts').select('*').order('name'),
-      supabase.from('gmail_connections').select('*').eq('user_id', user!.id).maybeSingle(),
-    ])
-
-    if (contactRes.error || !contactRes.data) {
-      navigate('/contacts')
-      return
-    }
-
-    setContact(contactRes.data as Contact)
-    setEmails((emailsRes.data ?? []) as EmailLog[])
-    setActivityLogs((activityRes.data ?? []) as ActivityLog[])
-    setDeals((dealsRes.data ?? []) as Deal[])
-    setTasks((tasksRes.data ?? []) as Task[])
-    setAllContacts((allContactsRes.data ?? []) as Contact[])
-    setGmailConn((gmailRes.data ?? null) as GmailConnection | null)
-    setLoading(false)
-  }
 
   const handleToggleTask = async (task: Task) => {
     const newCompleted = !task.completed

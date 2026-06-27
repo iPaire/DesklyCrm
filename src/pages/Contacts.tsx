@@ -1,10 +1,12 @@
 import { useState, useEffect, useMemo, useRef, useCallback, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { useAuthStore } from '../store/authStore'
 import { useBillingStore } from '../store/billingStore'
 import { logTeamActivity } from '../lib/billing'
-import type { Contact } from '../types'
+import type { Contact } from '../types/index'
+import { fetchContactsList } from '../lib/queries'
 import { ContactModal } from '../components/ContactModal'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Toast } from '../components/Toast'
@@ -243,10 +245,17 @@ export default function Contacts() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
   const team = useBillingStore((s) => s.team)
+  const queryClient = useQueryClient()
 
-  const [contacts, setContacts] = useState<Contact[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [fetchError, setFetchError] = useState<string | null>(null)
+  const { data, isLoading, error: queryError } = useQuery({
+    queryKey: ['contacts-list'],
+    queryFn: fetchContactsList,
+  })
+  const contacts = data?.contacts ?? []
+  const dealCounts = data?.dealCounts ?? {}
+  const openDealContactIds = data?.openDealContactIds ?? new Set<string>()
+  const fetchError = queryError?.message ?? null
+
   const [search, setSearch] = useState('')
 
   // Sort + group
@@ -277,9 +286,7 @@ export default function Contacts() {
   const longPressActivatedRef = useRef(false)
   const pressStartXRef = useRef(0)
 
-  // Deal counts (for Deals column + open-deal filter)
-  const [dealCounts, setDealCounts] = useState<Record<string, number>>({})
-  const [openDealContactIds, setOpenDealContactIds] = useState<Set<string>>(new Set())
+  // Deal counts derived from query data (dealCounts + openDealContactIds above)
 
   // Active filters
   const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set())
@@ -308,11 +315,7 @@ export default function Contacts() {
     }
   }, [customColumns, groupBy])
 
-  useEffect(() => {
-    fetchContacts()
-  }, [])
-
-  const updateScrollbar = useCallback(() => {
+const updateScrollbar = useCallback(() => {
     const el = tableContainerRef.current
     if (!el) return
     const isOverflow = el.scrollWidth > el.clientWidth + 1
@@ -327,28 +330,6 @@ export default function Contacts() {
   const onTableScroll = useCallback(() => {
     updateScrollbar()
   }, [updateScrollbar])
-
-  const fetchContacts = async () => {
-    setIsLoading(true)
-    setFetchError(null)
-    const [{ data, error }, { data: dealsData }] = await Promise.all([
-      supabase.from('contacts').select('*').order('created_at', { ascending: false }),
-      supabase.from('deals').select('contact_id, stage'),
-    ])
-    if (error) setFetchError(error.message)
-    else setContacts(data as Contact[])
-
-    const counts: Record<string, number> = {}
-    const openIds = new Set<string>()
-    for (const d of (dealsData ?? []) as { contact_id: string | null; stage: string }[]) {
-      if (!d.contact_id) continue
-      counts[d.contact_id] = (counts[d.contact_id] ?? 0) + 1
-      if (!['closed_won', 'closed_lost'].includes(d.stage)) openIds.add(d.contact_id)
-    }
-    setDealCounts(counts)
-    setOpenDealContactIds(openIds)
-    setIsLoading(false)
-  }
 
   // Filtered + sorted
   const filtered = useMemo(() => {
@@ -561,7 +542,7 @@ export default function Contacts() {
       if (team && user) {
         logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'deleted', entityType: 'contact', entityId: deleteTarget.id, entityName: deleteTarget.name })
       }
-      setContacts((prev) => prev.filter((c) => c.id !== deleteTarget.id))
+      queryClient.invalidateQueries({ queryKey: ['contacts-list'] })
       setToast({ message: `${deleteTarget.name} deleted.`, type: 'success' })
     }
     setIsDeleting(false)
@@ -577,7 +558,7 @@ export default function Contacts() {
     if (error) {
       setToast({ message: error.message, type: 'error' })
     } else {
-      setContacts((prev) => prev.filter((c) => !selectedIds.has(c.id)))
+      queryClient.invalidateQueries({ queryKey: ['contacts-list'] })
       setToast({ message: `${ids.length} contact${ids.length !== 1 ? 's' : ''} deleted.`, type: 'success' })
       exitSelection()
     }
@@ -598,12 +579,8 @@ export default function Contacts() {
     setEditContact(null)
   }
 
-  const handleSaved = (message: string, saved: Contact) => {
-    if (editContact) {
-      setContacts((prev) => prev.map((c) => (c.id === saved.id ? saved : c)))
-    } else {
-      setContacts((prev) => [saved, ...prev])
-    }
+  const handleSaved = (message: string, _saved: Contact) => {
+    queryClient.invalidateQueries({ queryKey: ['contacts-list'] })
     closeModal()
     setToast({ message, type: 'success' })
   }
@@ -828,7 +805,7 @@ export default function Contacts() {
             </div>
             <p className="text-sm text-gray-700 dark:text-gray-300 font-medium">Failed to load contacts</p>
             <p className="text-xs text-gray-400 dark:text-gray-500">{fetchError}</p>
-            <button onClick={fetchContacts} className="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium hover:underline">
+            <button onClick={() => queryClient.refetchQueries({ queryKey: ['contacts-list'] })} className="mt-1 text-sm text-primary-600 dark:text-primary-400 font-medium hover:underline">
               Try again
             </button>
           </div>

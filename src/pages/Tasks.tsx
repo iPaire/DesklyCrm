@@ -1,6 +1,10 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
-import type { Task, Contact, Deal } from '../types'
+import type { Task, Contact, Deal } from '../types/index'
+import { fetchTasksList } from '../lib/queries'
+
+type TasksData = Awaited<ReturnType<typeof fetchTasksList>>
 import TaskModal from '../components/TaskModal'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { Toast } from '../components/Toast'
@@ -222,13 +226,18 @@ function EmptyState({ filter, onAdd }: { filter: FilterTab; onAdd: () => void })
 export default function Tasks() {
   const user = useAuthStore(s => s.user)
   const team = useBillingStore(s => s.team)
-  const [tasks,    setTasks]    = useState<Task[]>([])
-  const [contacts, setContacts] = useState<Contact[]>([])
-  const [deals,    setDeals]    = useState<Deal[]>([])
-  const [loading,    setLoading]    = useState(true)
-  const [fetchError, setFetchError] = useState('')
-  const [retryKey,   setRetryKey]   = useState(0)
-  const [filter,     setFilter]     = useState<FilterTab>('all')
+  const queryClient = useQueryClient()
+
+  const { data, isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['tasks-list'],
+    queryFn: fetchTasksList,
+  })
+  const tasks    = data?.tasks    ?? [] as Task[]
+  const contacts = data?.contacts ?? [] as Contact[]
+  const deals    = data?.deals    ?? [] as Deal[]
+  const fetchError = queryError?.message ?? ''
+
+  const [filter, setFilter] = useState<FilterTab>('all')
 
   // Modal
   const [modalOpen, setModalOpen] = useState(false)
@@ -242,31 +251,6 @@ export default function Tasks() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   const today = getLocalToday()
-
-  // ── Fetch ──────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    async function load() {
-      const [
-        { data: taskData,    error: taskErr },
-        { data: contactData, error: contactErr },
-        { data: dealData,    error: dealErr },
-      ] = await Promise.all([
-        supabase.from('tasks').select('*').order('due_date', { ascending: true, nullsFirst: false }),
-        supabase.from('contacts').select('*').order('name', { ascending: true }),
-        supabase.from('deals').select('*').order('name', { ascending: true }),
-      ])
-      if (taskErr || contactErr || dealErr) {
-        setFetchError((taskErr ?? contactErr ?? dealErr)!.message)
-        setLoading(false)
-        return
-      }
-      setTasks((taskData   ?? []) as Task[])
-      setContacts((contactData ?? []) as Contact[])
-      setDeals((dealData   ?? []) as Deal[])
-      setLoading(false)
-    }
-    load()
-  }, [retryKey])
 
   // ── Derived state ──────────────────────────────────────────────────────────
   const counts = useMemo(() => ({
@@ -300,11 +284,14 @@ export default function Tasks() {
   // ── Actions ────────────────────────────────────────────────────────────────
   const toggleComplete = async (task: Task) => {
     const next = !task.completed
-    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: next } : t))
-    const { error } = await supabase
-      .from('tasks').update({ completed: next }).eq('id', task.id)
+    queryClient.setQueryData<TasksData>(['tasks-list'], old =>
+      old ? { ...old, tasks: old.tasks.map(t => t.id === task.id ? { ...t, completed: next } : t) } : old
+    )
+    const { error } = await supabase.from('tasks').update({ completed: next }).eq('id', task.id)
     if (error) {
-      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, completed: task.completed } : t))
+      queryClient.setQueryData<TasksData>(['tasks-list'], old =>
+        old ? { ...old, tasks: old.tasks.map(t => t.id === task.id ? { ...t, completed: task.completed } : t) } : old
+      )
       setToast({ message: error.message, type: 'error' })
     } else if (team && user) {
       logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'completed', entityType: 'task', entityId: task.id, entityName: task.title, details: { completed: next } })
@@ -314,21 +301,9 @@ export default function Tasks() {
   const openAdd = () => { setEditTask(null); setModalOpen(true) }
   const openEdit = (task: Task) => { setEditTask(task); setModalOpen(true) }
 
-  const handleSaved = (saved: Task, isNew: boolean) => {
-    if (isNew) {
-      setTasks(prev =>
-        [...prev, saved].sort((a, b) => {
-          if (!a.due_date && !b.due_date) return 0
-          if (!a.due_date) return 1
-          if (!b.due_date) return -1
-          return a.due_date.localeCompare(b.due_date)
-        })
-      )
-      setToast({ message: 'Task created!', type: 'success' })
-    } else {
-      setTasks(prev => prev.map(t => t.id === saved.id ? saved : t))
-      setToast({ message: 'Task updated!', type: 'success' })
-    }
+  const handleSaved = (_saved: Task, isNew: boolean) => {
+    queryClient.invalidateQueries({ queryKey: ['tasks-list'] })
+    setToast({ message: isNew ? 'Task created!' : 'Task updated!', type: 'success' })
   }
 
   const confirmDelete = async () => {
@@ -337,7 +312,7 @@ export default function Tasks() {
     const { error } = await supabase.from('tasks').delete().eq('id', deleteTarget.id)
     if (!error) {
       if (team && user) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'deleted', entityType: 'task', entityId: deleteTarget.id, entityName: deleteTarget.title })
-      setTasks(prev => prev.filter(t => t.id !== deleteTarget.id))
+      queryClient.invalidateQueries({ queryKey: ['tasks-list'] })
       setToast({ message: 'Task deleted.', type: 'success' })
     } else {
       setToast({ message: error.message, type: 'error' })
@@ -364,7 +339,7 @@ export default function Tasks() {
         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Failed to load tasks</p>
         <p className="text-xs text-gray-500 dark:text-gray-400 max-w-xs">{fetchError}</p>
         <button
-          onClick={() => { setFetchError(''); setLoading(true); setRetryKey(k => k + 1) }}
+          onClick={() => queryClient.refetchQueries({ queryKey: ['tasks-list'] })}
           className="mt-1 px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
         >
           Retry

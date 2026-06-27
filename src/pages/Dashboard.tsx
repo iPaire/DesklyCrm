@@ -1,11 +1,15 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import type { User } from '@supabase/supabase-js'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
-import type { Contact, Deal, Task } from '../types'
+import type { Contact, Deal, Task } from '../types/index'
 import { useAuthStore } from '../store/authStore'
 import { useBillingStore } from '../store/billingStore'
 import { runDailyChecks } from '../lib/automations'
+import { fetchDashboardData } from '../lib/queries'
+
+type DashboardData = Awaited<ReturnType<typeof fetchDashboardData>>
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -322,11 +326,15 @@ function SimpleDashboard({ contacts, deals, tasks, user, today, onComplete }: {
 export default function Dashboard() {
   const user = useAuthStore(s => s.user)
   const team = useBillingStore(s => s.team)
+  const queryClient = useQueryClient()
 
-  const [contacts, setContacts] = useState<Contact[]>([])
-  const [deals,    setDeals]    = useState<Deal[]>([])
-  const [tasks,    setTasks]    = useState<TaskRow[]>([])
-  const [loading,  setLoading]  = useState(true)
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ['dashboard-data'],
+    queryFn: fetchDashboardData,
+  })
+  const contacts = data?.contacts ?? []
+  const deals    = data?.deals    ?? []
+  const tasks    = data?.tasks    ?? []
 
   const [chartRange, setChartRange] = useState<RangeKey>('3M')
   const [dashMode,   setDashModeState] = useState<DashMode>(() =>
@@ -349,26 +357,17 @@ export default function Dashboard() {
   }, [])
 
   useEffect(() => {
-    async function load() {
-      const [{ data: c }, { data: d }, { data: t }] = await Promise.all([
-        supabase.from('contacts').select('*').order('created_at', { ascending: false }).limit(500),
-        supabase.from('deals').select('*').order('created_at', { ascending: false }).limit(500),
-        supabase.from('tasks').select('id, due_date, completed, title, created_at, updated_at'),
-      ])
-      setContacts((c ?? []) as Contact[])
-      setDeals((d ?? []) as Deal[])
-      setTasks((t ?? []) as TaskRow[])
-      setLoading(false)
-      if (user && team) runDailyChecks(user.id, team.id)
-    }
-    load()
-  }, [user])
+    if (data && user && team) runDailyChecks(user.id, team.id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!data, user?.id, team?.id])
 
   // ── mark task complete ────────────────────────────────────────────────────
   const handleCompleteTask = useCallback(async (id: string) => {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: true, updated_at: new Date().toISOString() } : t))
+    queryClient.setQueryData<DashboardData>(['dashboard-data'], old =>
+      old ? { ...old, tasks: old.tasks.map(t => t.id === id ? { ...t, completed: true, updated_at: new Date().toISOString() } : t) } : old
+    )
     await supabase.from('tasks').update({ completed: true, updated_at: new Date().toISOString() }).eq('id', id)
-  }, [])
+  }, [queryClient])
 
   // ── range-aware comparison ────────────────────────────────────────────────
   const rangeMs = useMemo(() => ({
