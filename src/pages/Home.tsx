@@ -215,11 +215,7 @@ export default function Home() {
             >
               {isDark ? <SunIcon /> : <MoonIcon />}
             </button>
-            {isLoggedIn ? (
-              <Link to="/dashboard" className="hidden sm:block px-3 py-2 text-[14px] font-semibold text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
-                Go to App
-              </Link>
-            ) : (
+            {!isLoggedIn && (
               <Link to="/login" className="hidden sm:block px-3 py-2 text-[14px] font-semibold text-gray-900 dark:text-white hover:text-primary-600 dark:hover:text-primary-400 transition-colors">
                 Log in
               </Link>

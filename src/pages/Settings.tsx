@@ -123,6 +123,58 @@ function SectionCard({
   )
 }
 
+// ─── Dashboard mode section ───────────────────────────────────────────────────
+
+type DashMode = 'simple' | 'advanced'
+function DashboardModeSection() {
+  const [mode, setModeState] = useState<DashMode>(() =>
+    (localStorage.getItem('deskly-dashboard-mode') as DashMode) || 'advanced'
+  )
+  const setMode = (m: DashMode) => {
+    setModeState(m)
+    localStorage.setItem('deskly-dashboard-mode', m)
+  }
+  return (
+    <div>
+      <p className="text-base font-semibold text-gray-900 dark:text-white mb-1">Dashboard layout</p>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+        Choose between a quick-glance simple view or the full advanced dashboard with charts and analytics.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {([
+          { key: 'simple' as const,   title: 'Simple',   desc: 'Clean stats, task list, pipeline overview. Best for a quick daily check-in.', icon: (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M4 6h16M4 10h16M4 14h8"/></svg>
+          )},
+          { key: 'advanced' as const, title: 'Advanced', desc: 'Full charts, sparklines, heatmap, funnel, and all analytics panels.', icon: (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          )},
+        ] as const).map(opt => (
+          <button
+            key={opt.key}
+            onClick={() => setMode(opt.key)}
+            className={`relative text-left p-4 rounded-xl border-2 transition-all ${
+              mode === opt.key
+                ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/30'
+                : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-900'
+            }`}
+          >
+            {mode === opt.key && (
+              <div className="absolute top-3 right-3 w-5 h-5 rounded-full bg-primary-600 flex items-center justify-center">
+                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7"/></svg>
+              </div>
+            )}
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center mb-3 ${mode === opt.key ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-600 dark:text-primary-400' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'}`}>
+              {opt.icon}
+            </div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">{opt.title}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">{opt.desc}</p>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── Helper: Feature list with check icons ────────────────────────────────────
 
 const FeatureList = ({ features }: { features: string[] }) => (
@@ -1663,6 +1715,19 @@ export default function Settings() {
             onClose={() => setActivityMember(null)}
           />
         )}
+
+        {/* Dashboard */}
+        <SectionCard
+          title="Dashboard"
+          icon={
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+            </svg>
+          }
+        >
+          <DashboardModeSection />
+        </SectionCard>
 
         {/* Automations */}
         <SectionCard

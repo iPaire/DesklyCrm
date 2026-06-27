@@ -159,7 +159,7 @@ function ManageColumnsModal({
               Default
             </p>
             <div className="flex flex-wrap gap-1.5">
-              {['Name', 'Email', 'Phone', 'Company'].map((col) => (
+              {['Name', 'Phone', 'Company', 'Deals'].map((col) => (
                 <span
                   key={col}
                   className="px-2.5 py-1 text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 rounded-lg"
@@ -277,6 +277,13 @@ export default function Contacts() {
   const longPressActivatedRef = useRef(false)
   const pressStartXRef = useRef(0)
 
+  // Deal counts (for Deals column + open-deal filter)
+  const [dealCounts, setDealCounts] = useState<Record<string, number>>({})
+  const [openDealContactIds, setOpenDealContactIds] = useState<Set<string>>(new Set())
+
+  // Active filters
+  const [activeFilters, setActiveFilters] = useState<Set<string>>(new Set())
+
   // Toast
   const [toast, setToast] = useState<ToastState>(null)
 
@@ -324,19 +331,29 @@ export default function Contacts() {
   const fetchContacts = async () => {
     setIsLoading(true)
     setFetchError(null)
-    const { data, error } = await supabase
-      .from('contacts')
-      .select('*')
-      .order('created_at', { ascending: false })
+    const [{ data, error }, { data: dealsData }] = await Promise.all([
+      supabase.from('contacts').select('*').order('created_at', { ascending: false }),
+      supabase.from('deals').select('contact_id, stage'),
+    ])
     if (error) setFetchError(error.message)
     else setContacts(data as Contact[])
+
+    const counts: Record<string, number> = {}
+    const openIds = new Set<string>()
+    for (const d of (dealsData ?? []) as { contact_id: string | null; stage: string }[]) {
+      if (!d.contact_id) continue
+      counts[d.contact_id] = (counts[d.contact_id] ?? 0) + 1
+      if (!['closed_won', 'closed_lost'].includes(d.stage)) openIds.add(d.contact_id)
+    }
+    setDealCounts(counts)
+    setOpenDealContactIds(openIds)
     setIsLoading(false)
   }
 
   // Filtered + sorted
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim()
-    const result = q
+    let result = q
       ? contacts.filter(
           (c) =>
             c.name.toLowerCase().includes(q) ||
@@ -351,8 +368,18 @@ export default function Contacts() {
           : new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       return sortDir === 'asc' ? cmp : -cmp
     })
+    if (activeFilters.has('open_deal')) {
+      result = result.filter(c => openDealContactIds.has(c.id))
+    }
+    if (activeFilters.has('this_month')) {
+      const now = new Date()
+      result = result.filter(c => {
+        const d = new Date(c.created_at)
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+      })
+    }
     return result
-  }, [contacts, search, sortBy, sortDir])
+  }, [contacts, search, sortBy, sortDir, activeFilters, openDealContactIds])
 
   // Grouped contacts
   const groups = useMemo(() => {
@@ -376,6 +403,20 @@ export default function Contacts() {
     }
     return entries
   }, [filtered, groupBy, customColumns])
+
+  const companyCount = useMemo(
+    () => new Set(contacts.filter(c => c.company?.trim()).map(c => c.company!.trim().toLowerCase())).size,
+    [contacts],
+  )
+
+  const toggleFilter = (f: string) => {
+    setActiveFilters(prev => {
+      const next = new Set(prev)
+      if (next.has(f)) next.delete(f)
+      else next.add(f)
+      return next
+    })
+  }
 
   // Sort toggle
   const toggleSort = (field: SortBy) => {
@@ -595,7 +636,7 @@ export default function Contacts() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Contacts</h1>
           <p className="text-sm text-gray-400 dark:text-gray-500 mt-0.5">
             {contacts.length > 0
-              ? `${contacts.length} contact${contacts.length !== 1 ? 's' : ''}`
+              ? `${contacts.length} ${contacts.length === 1 ? 'person' : 'people'} · ${companyCount} ${companyCount === 1 ? 'company' : 'companies'}`
               : 'Manage your leads and customers.'}
           </p>
         </div>
@@ -742,6 +783,29 @@ export default function Contacts() {
               </button>
             ))}
           </div>
+
+          <div className="h-4 w-px bg-gray-200 dark:bg-gray-700" />
+
+          {/* Filter */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Filter:</span>
+            {([
+              { id: 'open_deal',  label: 'Has open deal' },
+              { id: 'this_month', label: 'Added this month' },
+            ] as const).map(f => (
+              <button
+                key={f.id}
+                onClick={() => toggleFilter(f.id)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors ${
+                  activeFilters.has(f.id)
+                    ? 'bg-primary-600 text-white shadow-sm'
+                    : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -796,9 +860,9 @@ export default function Contacts() {
                       </th>
                     )}
                     <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Name</th>
-                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider min-w-[120px]">Email</th>
                     <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider min-w-[100px]">Phone</th>
                     <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider min-w-[100px]">Company</th>
+                    <th className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Deals</th>
                     {customColumns.map((col) => (
                       <th key={col.key} className="text-left px-5 py-3 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
                         {col.label}
@@ -867,17 +931,25 @@ export default function Contacts() {
                               <td className="px-5 py-3.5">
                                 <div className="flex items-center gap-3">
                                   <Avatar name={contact.name} />
-                                  <p className="text-sm font-medium text-gray-900 dark:text-white">{contact.name}</p>
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{contact.name}</p>
+                                    {contact.email && (
+                                      <p className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[180px]">{contact.email}</p>
+                                    )}
+                                  </div>
                                 </div>
-                              </td>
-                              <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 max-w-[160px] truncate">
-                                {contact.email ?? <span className="text-gray-200 dark:text-gray-700">-</span>}
                               </td>
                               <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400">
                                 {contact.phone ?? <span className="text-gray-200 dark:text-gray-700">-</span>}
                               </td>
                               <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400">
                                 {contact.company ?? <span className="text-gray-200 dark:text-gray-700">-</span>}
+                              </td>
+                              <td className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 tabular-nums">
+                                {dealCounts[contact.id]
+                                  ? <span className="font-medium text-gray-900 dark:text-white">{dealCounts[contact.id]}</span>
+                                  : <span className="text-gray-200 dark:text-gray-700">-</span>
+                                }
                               </td>
                               {customColumns.map((col) => (
                                 <td key={col.key} className="px-5 py-3.5 text-sm text-gray-500 dark:text-gray-400 max-w-[160px] truncate">

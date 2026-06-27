@@ -12,8 +12,11 @@ const navItems = [
     to: '/dashboard',
     label: 'Dashboard',
     icon: (
-      <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10-1a1 1 0 00-1 1v2a1 1 0 001 1h4a1 1 0 001-1V5a1 1 0 00-1-1h-4zm-10 9a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1v-5zm10 0a1 1 0 00-1 1v5a1 1 0 001 1h4a1 1 0 001-1v-5a1 1 0 00-1-1h-4z" />
+      <svg className="w-[18px] h-[18px]" fill="currentColor" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="8.5" height="8.5" rx="2.5" />
+        <rect x="12.5" y="3" width="8.5" height="8.5" rx="2.5" />
+        <rect x="3" y="12.5" width="8.5" height="8.5" rx="2.5" />
+        <rect x="12.5" y="12.5" width="8.5" height="8.5" rx="2.5" opacity="0.45" />
       </svg>
     ),
   },
@@ -21,8 +24,9 @@ const navItems = [
     to: '/contacts',
     label: 'Contacts',
     icon: (
-      <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M17 20h5v-2a4 4 0 00-5-3.87M9 20H4v-2a4 4 0 015-3.87m6-4a4 4 0 11-8 0 4 4 0 018 0zm6 4a2 2 0 100-4 2 2 0 000 4zM3 20a2 2 0 100-4 2 2 0 000 4z" />
+      <svg className="w-[18px] h-[18px]" fill="currentColor" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="4.5" />
+        <path d="M3.5 21c0-4.7 3.8-8.5 8.5-8.5s8.5 3.8 8.5 8.5H3.5z" />
       </svg>
     ),
   },
@@ -30,8 +34,10 @@ const navItems = [
     to: '/deals',
     label: 'Deals',
     icon: (
-      <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      <svg className="w-[18px] h-[18px]" fill="currentColor" viewBox="0 0 24 24">
+        <rect x="3" y="10" width="5" height="11" rx="1.5" />
+        <rect x="9.5" y="4" width="5" height="17" rx="1.5" />
+        <rect x="16" y="7" width="5" height="14" rx="1.5" opacity="0.6" />
       </svg>
     ),
   },
@@ -40,7 +46,8 @@ const navItems = [
     label: 'Tasks',
     icon: (
       <svg className="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+        <rect x="3" y="3" width="18" height="18" rx="4.5" strokeWidth={1.75} />
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 12l3 3 5-5" />
       </svg>
     ),
   },

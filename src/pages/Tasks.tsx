@@ -8,10 +8,10 @@ import { useAuthStore } from '../store/authStore'
 import { useBillingStore } from '../store/billingStore'
 import { logTeamActivity } from '../lib/billing'
 
-type FilterTab = 'all' | 'today' | 'overdue' | 'completed'
+type FilterTab = 'all' | 'today' | 'overdue' | 'upcoming' | 'completed'
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
-// Parse as local date (avoids UTC-shift bugs with date-only strings)
+
 function getLocalToday(): string {
   const d = new Date()
   return [
@@ -45,6 +45,10 @@ function isOverdue(task: Task, today: string) {
 
 function isDueToday(task: Task, today: string) {
   return task.due_date === today && !task.completed
+}
+
+function isUpcoming(task: Task, today: string) {
+  return !!task.due_date && task.due_date > today && !task.completed
 }
 
 // ─── Task row ─────────────────────────────────────────────────────────────────
@@ -168,12 +172,24 @@ function TaskRow({ task, contacts, deals, today, onEdit, onDelete, onToggle }: R
   )
 }
 
+// ─── Section header (for grouped "All" view) ──────────────────────────────────
+
+function SectionLabel({ label, count, accent }: { label: string; count: number; accent: string }) {
+  return (
+    <div className={`flex items-center gap-3 px-5 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40 ${accent}`}>
+      <span className="text-[11px] font-semibold uppercase tracking-wide">{label}</span>
+      <span className="text-[10px] font-medium opacity-70">{count}</span>
+    </div>
+  )
+}
+
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
 const EMPTY: Record<FilterTab, { title: string; sub: string; addable: boolean }> = {
   all:       { title: 'No tasks yet',          sub: 'Create your first task to stay organized.',    addable: true },
   today:     { title: 'Nothing due today',      sub: "You're all caught up for today!",              addable: false },
   overdue:   { title: 'No overdue tasks',       sub: 'Great job staying on top of things.',          addable: false },
+  upcoming:  { title: 'Nothing upcoming',       sub: 'No tasks scheduled for future dates.',         addable: false },
   completed: { title: 'No completed tasks yet', sub: 'Tasks you complete will appear here.',         addable: false },
 }
 
@@ -253,21 +269,33 @@ export default function Tasks() {
   }, [retryKey])
 
   // ── Derived state ──────────────────────────────────────────────────────────
+  const counts = useMemo(() => ({
+    all:       tasks.filter(t => !t.completed).length,
+    today:     tasks.filter(t => isDueToday(t, today)).length,
+    overdue:   tasks.filter(t => isOverdue(t, today)).length,
+    upcoming:  tasks.filter(t => isUpcoming(t, today)).length,
+    completed: tasks.filter(t => t.completed).length,
+  }), [tasks, today])
+
+  // Groups for "All" tab
+  const groups = useMemo(() => ({
+    overdue:   tasks.filter(t => isOverdue(t, today)),
+    today:     tasks.filter(t => isDueToday(t, today)),
+    upcoming:  tasks.filter(t => isUpcoming(t, today)),
+    noDate:    tasks.filter(t => !t.due_date && !t.completed),
+    completed: tasks.filter(t => t.completed),
+  }), [tasks, today])
+
+  // Flat list for specific tabs
   const filtered = useMemo(() => {
     switch (filter) {
       case 'today':     return tasks.filter(t => isDueToday(t, today))
       case 'overdue':   return tasks.filter(t => isOverdue(t, today))
+      case 'upcoming':  return tasks.filter(t => isUpcoming(t, today))
       case 'completed': return tasks.filter(t => t.completed)
-      default:          return tasks
+      default:          return []
     }
   }, [tasks, filter, today])
-
-  const counts = useMemo(() => ({
-    all:       tasks.length,
-    today:     tasks.filter(t => isDueToday(t, today)).length,
-    overdue:   tasks.filter(t => isOverdue(t, today)).length,
-    completed: tasks.filter(t => t.completed).length,
-  }), [tasks, today])
 
   // ── Actions ────────────────────────────────────────────────────────────────
   const toggleComplete = async (task: Task) => {
@@ -349,8 +377,16 @@ export default function Tasks() {
     { id: 'all',       label: 'All' },
     { id: 'today',     label: 'Today' },
     { id: 'overdue',   label: 'Overdue' },
+    { id: 'upcoming',  label: 'Upcoming' },
     { id: 'completed', label: 'Completed' },
   ]
+
+  const rowProps = { contacts, deals, today, onEdit: openEdit, onDelete: setDeleteTarget, onToggle: toggleComplete }
+
+  const showGrouped = filter === 'all'
+  const hasAny = showGrouped
+    ? Object.values(groups).some(g => g.length > 0)
+    : filtered.length > 0
 
   return (
     <div className="p-4 lg:p-8 max-w-4xl mx-auto">
@@ -380,8 +416,8 @@ export default function Tasks() {
         </button>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex items-center gap-1 mb-5 bg-gray-100 dark:bg-gray-800/60 p-1 rounded-xl w-fit">
+      {/* Filter tabs - segmented control */}
+      <div className="flex items-center gap-1 mb-5 bg-gray-100 dark:bg-gray-800/60 p-1 rounded-xl w-fit flex-wrap">
         {TABS.map(tab => {
           const active = filter === tab.id
           const count  = counts[tab.id]
@@ -420,40 +456,76 @@ export default function Tasks() {
       </div>
 
       {/* List */}
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-        {/* Column labels (only when there's content) */}
-        {filtered.length > 0 && (
-          <div className="flex items-center gap-3 px-5 py-2.5 border-b border-gray-100 dark:border-gray-800">
-            <div className="w-[18px]" />
-            <span className="flex-1 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
-              Task
-            </span>
-            <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide w-16 text-right pr-1">
-              Due
-            </span>
-            <div className="w-7" />
-          </div>
-        )}
-
-        {filtered.length === 0 ? (
+      {!hasAny ? (
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
           <EmptyState filter={filter} onAdd={openAdd} />
-        ) : (
+        </div>
+      ) : showGrouped ? (
+        /* Grouped "All" view */
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          {groups.overdue.length > 0 && (
+            <>
+              <SectionLabel label="Overdue" count={groups.overdue.length} accent="text-red-500 dark:text-red-400" />
+              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                {groups.overdue.map(task => <TaskRow key={task.id} task={task} {...rowProps} />)}
+              </ul>
+            </>
+          )}
+          {groups.today.length > 0 && (
+            <>
+              <SectionLabel label="Today" count={groups.today.length} accent="text-amber-600 dark:text-amber-400" />
+              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                {groups.today.map(task => <TaskRow key={task.id} task={task} {...rowProps} />)}
+              </ul>
+            </>
+          )}
+          {groups.upcoming.length > 0 && (
+            <>
+              <SectionLabel label="Upcoming" count={groups.upcoming.length} accent="text-gray-500 dark:text-gray-400" />
+              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                {groups.upcoming.map(task => <TaskRow key={task.id} task={task} {...rowProps} />)}
+              </ul>
+            </>
+          )}
+          {groups.noDate.length > 0 && (
+            <>
+              <SectionLabel label="No date" count={groups.noDate.length} accent="text-gray-400 dark:text-gray-500" />
+              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                {groups.noDate.map(task => <TaskRow key={task.id} task={task} {...rowProps} />)}
+              </ul>
+            </>
+          )}
+          {groups.completed.length > 0 && (
+            <>
+              <SectionLabel label="Completed" count={groups.completed.length} accent="text-gray-400 dark:text-gray-500" />
+              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                {groups.completed.map(task => <TaskRow key={task.id} task={task} {...rowProps} />)}
+              </ul>
+            </>
+          )}
+        </div>
+      ) : (
+        /* Flat list for specific tab */
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          {filtered.length > 0 && (
+            <div className="flex items-center gap-3 px-5 py-2.5 border-b border-gray-100 dark:border-gray-800">
+              <div className="w-[18px]" />
+              <span className="flex-1 text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">
+                Task
+              </span>
+              <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide w-16 text-right pr-1">
+                Due
+              </span>
+              <div className="w-7" />
+            </div>
+          )}
           <ul className="divide-y divide-gray-100 dark:divide-gray-800">
             {filtered.map(task => (
-              <TaskRow
-                key={task.id}
-                task={task}
-                contacts={contacts}
-                deals={deals}
-                today={today}
-                onEdit={openEdit}
-                onDelete={setDeleteTarget}
-                onToggle={toggleComplete}
-              />
+              <TaskRow key={task.id} task={task} {...rowProps} />
             ))}
           </ul>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Completed count footer */}
       {filter === 'all' && counts.completed > 0 && tasks.length > 0 && (
