@@ -84,10 +84,10 @@ export default function Invite() {
     setTimeout(() => navigate(user ? '/dashboard' : '/login'), 2000)
   }
 
-  const doAccept = async (uid: string) => {
+  const doAccept = async (uid: string, createdAt?: string) => {
     if (!token) return
     setStep('accepting')
-    const { member, error } = await acceptInvite(token, uid)
+    const { member, error } = await acceptInvite(token, uid, createdAt)
     if (error) {
       setStep('error')
       setErrorMsg(error.message)
@@ -109,7 +109,7 @@ export default function Invite() {
       if (existingMembershipId) {
         await removeMember(existingMembershipId)
       }
-      doAccept(user.id)
+      doAccept(user.id, user.created_at ?? undefined)
     } else {
       setStep('auth')
     }
@@ -124,7 +124,7 @@ export default function Invite() {
       if (password !== confirm) { setErrorMsg('Passwords do not match.'); setAuthLoading(false); return }
       const { data, error } = await supabase.auth.signUp({ email, password })
       if (error) { setErrorMsg(error.message); setAuthLoading(false); return }
-      if (data.user) await doAccept(data.user.id)
+      if (data.user) await doAccept(data.user.id, data.user.created_at)
     } else {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) { setErrorMsg(error.message); setAuthLoading(false); return }
@@ -138,7 +138,7 @@ export default function Invite() {
           }
           await removeMember(membership.id)
         }
-        await doAccept(data.user.id)
+        await doAccept(data.user.id, data.user.created_at)
       }
     }
     setAuthLoading(false)

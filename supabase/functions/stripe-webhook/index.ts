@@ -7,6 +7,7 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import Stripe from 'https://esm.sh/stripe@14?target=deno'
+import { processStripeEvent } from '../_shared/process-stripe-event.ts'
 
 const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY')!
 const stripeWebhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')!
@@ -32,137 +33,48 @@ Deno.serve(async (req) => {
     return new Response('Invalid signature', { status: 400 })
   }
 
-  try {
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const session = event.data.object as Stripe.Checkout.Session
-        const teamId = session.metadata?.team_id
-        const userId = session.client_reference_id ?? session.metadata?.user_id
-        const customerId = session.customer as string
-        const subscriptionId = session.subscription as string
+  // Idempotency check - skip events already successfully processed
+  const { data: existing } = await supabase
+    .from('webhook_events')
+    .select('status')
+    .eq('stripe_event_id', event.id)
+    .maybeSingle()
 
-        // Fetch the subscription to get current_period_end
-        let currentPeriodEnd: string | null = null
-        if (subscriptionId) {
-          const subRes = await fetch(`https://api.stripe.com/v1/subscriptions/${subscriptionId}`, {
-            headers: { Authorization: `Bearer ${stripeSecretKey}` },
-          })
-          if (subRes.ok) {
-            const sub = await subRes.json()
-            if (sub.current_period_end) {
-              currentPeriodEnd = new Date(sub.current_period_end * 1000).toISOString()
-            }
-          }
-        }
-
-        const checkoutUpdate = {
-          stripe_customer_id: customerId,
-          stripe_subscription_id: subscriptionId,
-          subscription_status: 'active',
-          ...(currentPeriodEnd ? { current_period_end: currentPeriodEnd } : {}),
-        }
-
-        if (teamId) {
-          await supabase.from('teams').update(checkoutUpdate).eq('id', teamId)
-        } else if (userId) {
-          await supabase.from('teams').update(checkoutUpdate).eq('owner_id', userId)
-        }
-
-        // Mark all active members of this team as having paid seats,
-        // and store the subscription ID per-member for traceability
-        const targetTeamId = teamId ?? (
-          userId ? (await supabase.from('teams').select('id').eq('owner_id', userId).maybeSingle()).data?.id : null
-        )
-        if (targetTeamId && subscriptionId) {
-          await supabase
-            .from('team_members')
-            .update({ has_paid_seat: true, stripe_subscription_id: subscriptionId })
-            .eq('team_id', targetTeamId)
-            .eq('status', 'active')
-        }
-        break
-      }
-
-      case 'customer.subscription.updated': {
-        const sub = event.data.object as Stripe.Subscription
-        const teamId = sub.metadata?.team_id
-        const status = mapStripeStatus(sub.status)
-        const seats = sub.items.data[0]?.quantity ?? 1
-        const currentPeriodEnd = sub.current_period_end
-          ? new Date(sub.current_period_end * 1000).toISOString()
-          : null
-
-        const updatePayload = { subscription_status: status, seats, current_period_end: currentPeriodEnd }
-
-        let resolvedTeamId: string | null = teamId ?? null
-        if (teamId) {
-          await supabase.from('teams').update(updatePayload).eq('id', teamId)
-        } else {
-          const { data: updatedTeams } = await supabase
-            .from('teams')
-            .update(updatePayload)
-            .eq('stripe_subscription_id', sub.id)
-            .select('id')
-          resolvedTeamId = updatedTeams?.[0]?.id ?? null
-        }
-
-        // On renewal (new billing period), refresh stripe_subscription_id on all paid members
-        // so they all reflect the current subscription for this period
-        if (resolvedTeamId && status === 'active') {
-          await supabase
-            .from('team_members')
-            .update({ stripe_subscription_id: sub.id })
-            .eq('team_id', resolvedTeamId)
-            .eq('has_paid_seat', true)
-        }
-        break
-      }
-
-      case 'customer.subscription.deleted': {
-        const sub = event.data.object as Stripe.Subscription
-        await supabase
-          .from('teams')
-          .update({ subscription_status: 'canceled' })
-          .eq('stripe_subscription_id', sub.id)
-        break
-      }
-
-      case 'invoice.payment_failed': {
-        const invoice = event.data.object as Stripe.Invoice
-        const subId = typeof invoice.subscription === 'string'
-          ? invoice.subscription
-          : invoice.subscription?.id
-        if (subId) {
-          await supabase
-            .from('teams')
-            .update({ subscription_status: 'past_due' })
-            .eq('stripe_subscription_id', subId)
-        }
-        break
-      }
-    }
-
-    return new Response(JSON.stringify({ received: true }), {
+  if (existing?.status === 'processed') {
+    return new Response(JSON.stringify({ received: true, skipped: 'already_processed' }), {
       headers: { 'Content-Type': 'application/json' },
     })
+  }
+
+  // Log the event before processing so retries can pick it up if we crash
+  await supabase.from('webhook_events').upsert({
+    stripe_event_id: event.id,
+    event_type: event.type,
+    payload: event,
+    status: 'pending',
+  }, { onConflict: 'stripe_event_id', ignoreDuplicates: false })
+
+  try {
+    await processStripeEvent(event, supabase)
+
+    await supabase.from('webhook_events').update({
+      status: 'processed',
+      processed_at: new Date().toISOString(),
+      error_message: null,
+    }).eq('stripe_event_id', event.id)
   } catch (err) {
     console.error('Webhook handler error:', err)
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500 })
-  }
-})
 
-function mapStripeStatus(status: Stripe.Subscription.Status): string {
-  switch (status) {
-    case 'active':
-    case 'trialing':
-      return 'active'
-    case 'past_due':
-      return 'past_due'
-    case 'canceled':
-    case 'unpaid':
-    case 'incomplete_expired':
-      return 'canceled'
-    default:
-      return status
+    // Mark as failed so retry-webhooks picks it up with exponential backoff.
+    // Return 200 to Stripe - we own the retry, not Stripe.
+    await supabase.from('webhook_events').update({
+      status: 'failed',
+      error_message: String(err),
+      next_retry_at: new Date(Date.now() + 60_000).toISOString(), // first retry in 1 min
+    }).eq('stripe_event_id', event.id)
   }
-}
+
+  return new Response(JSON.stringify({ received: true }), {
+    headers: { 'Content-Type': 'application/json' },
+  })
+})

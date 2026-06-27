@@ -30,6 +30,7 @@ export interface TeamMember {
   joined_at: string | null
   has_paid_seat: boolean
   stripe_subscription_id: string | null
+  member_trial_start: string | null
 }
 
 export interface TeamActivityLog {
@@ -130,20 +131,20 @@ export async function getTeam(userId: string) {
  */
 export async function getTeamAndRole(
   userId: string,
-): Promise<{ team: Team | null; role: 'owner' | 'member' | null; membershipFound: boolean; hasPaidSeat: boolean; memberJoinedAt: string | null }> {
+): Promise<{ team: Team | null; role: 'owner' | 'member' | null; membershipFound: boolean; hasPaidSeat: boolean; memberJoinedAt: string | null; memberTrialStart: string | null }> {
   const { data: memberships, error: membershipsError } = await supabase
     .from('team_members')
-    .select('team_id, role, has_paid_seat, joined_at')
+    .select('team_id, role, has_paid_seat, joined_at, member_trial_start')
     .eq('user_id', userId)
     .eq('status', 'active')
 
   // Network failure - don't treat as "no membership" or ensureTeam will create a bad team
   if (membershipsError) {
-    return { team: null, role: null, membershipFound: true, hasPaidSeat: false, memberJoinedAt: null }
+    return { team: null, role: null, membershipFound: true, hasPaidSeat: false, memberJoinedAt: null, memberTrialStart: null }
   }
 
   if (!memberships || memberships.length === 0) {
-    return { team: null, role: null, membershipFound: false, hasPaidSeat: false, memberJoinedAt: null }
+    return { team: null, role: null, membershipFound: false, hasPaidSeat: false, memberJoinedAt: null, memberTrialStart: null }
   }
 
   const membership = memberships.find(m => m.role === 'member') ?? memberships[0]
@@ -165,6 +166,7 @@ export async function getTeamAndRole(
     membershipFound: true,
     hasPaidSeat,
     memberJoinedAt: membership.role === 'member' ? (membership.joined_at ?? null) : null,
+    memberTrialStart: membership.role === 'member' ? (membership.member_trial_start ?? null) : null,
   }
 }
 
@@ -221,7 +223,7 @@ export async function declineInvite(inviteToken: string) {
   return { error }
 }
 
-export async function acceptInvite(inviteToken: string, userId: string) {
+export async function acceptInvite(inviteToken: string, userId: string, userCreatedAt?: string) {
   const { data, error } = await supabase
     .from('team_members')
     .update({ status: 'active', user_id: userId, joined_at: new Date().toISOString() })
@@ -229,6 +231,17 @@ export async function acceptInvite(inviteToken: string, userId: string) {
     .select('*, teams(subscription_status, id)')
     .single()
   if (error || !data) return { member: data as TeamMember | null, error }
+
+  // Persist member_trial_start once - never overwrite.
+  // Prevents a free extra trial if the user deletes and re-registers their account.
+  if (!data.member_trial_start) {
+    const trialStart = userCreatedAt ?? new Date().toISOString()
+    await supabase
+      .from('team_members')
+      .update({ member_trial_start: trialStart })
+      .eq('id', data.id)
+    return { member: { ...data, member_trial_start: trialStart } as TeamMember, error: null }
+  }
 
   // Member joined - the owner must explicitly activate their seat via payment.
   // Do NOT auto-grant has_paid_seat even if the team is already subscribed.

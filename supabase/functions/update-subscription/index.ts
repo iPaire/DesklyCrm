@@ -2,7 +2,7 @@
 // Updates the Stripe subscription quantity to match the team's active member count.
 // When member_id is provided (seat activation), also force-pays the prorated invoice
 // and updates the member's stripe_subscription_id in DB.
-// Deploy: supabase functions deploy update-subscription --no-verify-jwt
+// Deploy: supabase functions deploy update-subscription
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 

@@ -30,7 +30,7 @@ export const useBillingStore = create<BillingState>((set) => ({
 
   fetchBilling: async (userId: string) => {
     set({ isLoading: true })
-    let { team, role, membershipFound, hasPaidSeat, memberJoinedAt } = await getTeamAndRole(userId)
+    let { team, role, membershipFound, hasPaidSeat, memberJoinedAt, memberTrialStart } = await getTeamAndRole(userId)
     if (!membershipFound) {
       const { data: { user } } = await supabase.auth.getUser()
       const email = user?.email
@@ -46,27 +46,20 @@ export const useBillingStore = create<BillingState>((set) => ({
     const { members } = await getTeamMembers(team.id)
     const trialInfo = getTrialInfo(team.trial_start, team.trial_extended_days)
 
-    // When trial expires, mark it in DB so status is the source of truth
-    let currentTeam: Team = team
-    if (trialInfo.isExpired && team.subscription_status === 'trialing') {
-      supabase.from('teams').update({ subscription_status: 'ended' }).eq('id', team.id)
-      currentTeam = { ...team, subscription_status: 'ended' }
-    }
+    // Derive effective status locally - server-side cron (expire_trials) handles the actual DB update
+    const currentTeam: Team = (trialInfo.isExpired && team.subscription_status === 'trialing')
+      ? { ...team, subscription_status: 'ended' }
+      : team
 
-    // Per-member trial: based on account creation date (not join date).
-    // A user who existed for 10 days before being invited should not get a fresh 14-day trial.
+    // Per-member trial: use member_trial_start stored in DB at first invite acceptance.
+    // This is immune to account deletion + re-registration (trial start is never overwritten).
+    // Falls back to user.created_at if member_trial_start isn't set yet (old accounts).
     let storedMemberJoinedAt: string | null = null
     if (role === 'member') {
       const { data: { session } } = await supabase.auth.getSession()
-      storedMemberJoinedAt = session?.user?.created_at ?? memberJoinedAt ?? null
+      storedMemberJoinedAt = memberTrialStart ?? session?.user?.created_at ?? memberJoinedAt ?? null
     }
     const memberTrialInfo = storedMemberJoinedAt ? getTrialInfo(storedMemberJoinedAt) : null
-
-    const activeSeats = members.filter(m => m.status === 'active').length || 1
-    const teamWithSeats: Team = activeSeats !== currentTeam.seats ? { ...currentTeam, seats: activeSeats } : currentTeam
-    if (activeSeats !== currentTeam.seats) {
-      supabase.from('teams').update({ seats: activeSeats }).eq('id', currentTeam.id)
-    }
 
     // Auto-restore: if owner isn't subscribed but may have paid in Stripe, silently sync
     if (role === 'owner' && currentTeam.subscription_status !== 'active') {
@@ -81,7 +74,7 @@ export const useBillingStore = create<BillingState>((set) => ({
       }
     }
 
-    set({ team: teamWithSeats, members, trialInfo, memberTrialInfo, memberJoinedAt: storedMemberJoinedAt, hasPaidSeat, isOwner: role === 'owner', isLoading: false })
+    set({ team: currentTeam, members, trialInfo, memberTrialInfo, memberJoinedAt: storedMemberJoinedAt, hasPaidSeat, isOwner: role === 'owner', isLoading: false })
   },
 
   setTeam: (team) => {
