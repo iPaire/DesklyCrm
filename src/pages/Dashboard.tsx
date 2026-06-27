@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
+import type { User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import type { Contact, Deal, Task } from '../types'
 import { useAuthStore } from '../store/authStore'
@@ -177,7 +178,7 @@ function LoadingSkeleton() {
 
 function SimpleDashboard({ contacts, deals, tasks, user, today, onComplete }: {
   contacts: Contact[]; deals: Deal[]; tasks: TaskRow[]
-  user: ReturnType<typeof useAuthStore>['user']
+  user: User | null
   today: string
   onComplete: (id: string) => void
 }) {
