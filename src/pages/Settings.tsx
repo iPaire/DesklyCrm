@@ -128,7 +128,7 @@ function SectionCard({
 type DashMode = 'simple' | 'advanced'
 function DashboardModeSection() {
   const [mode, setModeState] = useState<DashMode>(() =>
-    (localStorage.getItem('deskly-dashboard-mode') as DashMode) || 'advanced'
+    (localStorage.getItem('deskly-dashboard-mode') as DashMode) || 'simple'
   )
   const setMode = (m: DashMode) => {
     setModeState(m)

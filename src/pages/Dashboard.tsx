@@ -330,7 +330,7 @@ export default function Dashboard() {
 
   const [chartRange, setChartRange] = useState<RangeKey>('3M')
   const [dashMode,   setDashModeState] = useState<DashMode>(() =>
-    (localStorage.getItem('deskly-dashboard-mode') as DashMode) || 'advanced'
+    (localStorage.getItem('deskly-dashboard-mode') as DashMode) || 'simple'
   )
   const [heatHover, setHeatHover] = useState<{ idx: number; x: number; y: number } | null>(null)
   const heatGridRef = useRef<HTMLDivElement>(null)
