@@ -273,15 +273,15 @@ export function GmailSettingsPanel({ onToast }: Props) {
   return (
     <div className="space-y-4">
       {/* Status badge */}
-      <div className="flex items-center justify-between p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-3 p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl">
+        <div className="flex items-center gap-3 min-w-0">
           <div className="w-9 h-9 rounded-lg bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-700 flex items-center justify-center shrink-0">
             <GmailIcon />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">{connection.gmail_email}</p>
-              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded-full">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{connection.gmail_email}</p>
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/50 px-1.5 py-0.5 rounded-full shrink-0">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
                 Connected
               </span>
@@ -292,7 +292,7 @@ export function GmailSettingsPanel({ onToast }: Props) {
         <button
           onClick={handleDisconnect}
           disabled={isDisconnecting || syncStatus === 'syncing'}
-          className="text-xs font-medium text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 disabled:opacity-40 transition-colors"
+          className="shrink-0 text-xs font-medium text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 disabled:opacity-40 transition-colors"
         >
           {isDisconnecting ? 'Disconnecting…' : 'Disconnect'}
         </button>

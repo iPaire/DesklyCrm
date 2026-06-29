@@ -9,10 +9,39 @@
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#4f46e5" />
     <meta name="description" content="Simple CRM for small teams. Manage contacts, deals, and tasks - all in one place." />
+    <link rel="canonical" href="https://desklycrm.com/" />
     <meta property="og:title" content="Deskly CRM" />
     <meta property="og:description" content="Simple CRM for small teams. Manage contacts, deals, and tasks - all in one place." />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://desklycrm.com" />
+    <meta property="og:url" content="https://desklycrm.com/" />
+    <meta property="og:image" content="https://desklycrm.com/favicon.svg" />
+    <meta property="og:site_name" content="Deskly CRM" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Deskly CRM",
+      "url": "https://desklycrm.com",
+      "description": "Simple CRM for small teams. Manage contacts, deals, and tasks in one place. Includes a Kanban pipeline, Gmail integration, task tracking, and team collaboration.",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD",
+        "description": "14-day free trial, no credit card required"
+      },
+      "featureList": [
+        "Contact management",
+        "Deal pipeline with Kanban board",
+        "Task tracking and reminders",
+        "Gmail email sync",
+        "Team collaboration",
+        "Workflow automations",
+        "Sales reporting"
+      ]
+    }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -27,7 +56,7 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><!--app-html--></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

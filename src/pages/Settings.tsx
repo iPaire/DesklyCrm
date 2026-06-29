@@ -861,9 +861,9 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
 
       {error && <p className="text-sm text-red-500 dark:text-red-400">{error}</p>}
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         {['HubSpot', 'Salesforce', 'Pipedrive'].map(crm => (
-          <div key={crm} className="flex items-center gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+          <div key={crm} className="flex items-center gap-2 px-3 py-2.5 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
             <svg className="w-4 h-4 text-emerald-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
             </svg>

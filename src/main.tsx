@@ -14,10 +14,18 @@ const queryClient = new QueryClient({
   },
 })
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+const container = document.getElementById('root')!
+const app = (
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <App />
     </QueryClientProvider>
-  </React.StrictMode>,
+  </React.StrictMode>
 )
+
+// firstElementChild is null for empty divs and comment-only placeholders (<!--app-html-->)
+if (container.firstElementChild) {
+  ReactDOM.hydrateRoot(container, app)
+} else {
+  ReactDOM.createRoot(container).render(app)
+}

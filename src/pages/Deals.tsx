@@ -917,13 +917,14 @@ export default function Deals() {
     })
   }
 
-  const handleDragEnd = async ({ active, over }: DragEndEvent) => {
-    const activeId    = active.id as string
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    const activeId     = active.id as string
     const currentItems = itemsRef.current
+
+    setActiveId(null)
 
     if (!over) {
       setItems(buildItems(deals))
-      setActiveId(null)
       return
     }
 
@@ -935,76 +936,98 @@ export default function Deals() {
       : findContainer(overId, currentItems)
 
     if (activeContainer && overContainer && activeContainer === overContainer) {
-      const col   = currentItems[activeContainer]
-      const aIdx  = col.indexOf(activeId)
-      const oIdx  = col.indexOf(overId)
+      const col  = currentItems[activeContainer]
+      const aIdx = col.indexOf(activeId)
+      const oIdx = col.indexOf(overId)
       if (aIdx !== -1 && oIdx !== -1 && aIdx !== oIdx) {
         setItems(prev => ({
           ...prev,
           [activeContainer]: arrayMove(prev[activeContainer], aIdx, oIdx),
         }))
       }
+      return
     }
 
     const deal     = deals.find(d => d.id === activeId)
     const newStage = findContainer(activeId, currentItems)
 
-    if (deal && newStage && deal.stage !== newStage) {
+    if (!deal || !newStage || deal.stage === newStage) return
+
+    // Optimistic: update deals immediately so colors + totals reflect the new stage
+    const updatedDeal = { ...deal, stage: newStage }
+    setDeals(prev => prev.map(d => d.id === activeId ? updatedDeal : d))
+
+    // Save in background - revert only on failure
+    ;(async () => {
       const { error } = await supabase
         .from('deals')
         .update({ stage: newStage })
         .eq('id', activeId)
 
-      if (!error) {
-        const updatedDeal = { ...deal, stage: newStage }
-        setDeals(prev => prev.map(d => d.id === activeId ? updatedDeal : d))
-        setToast({ message: `Moved to ${STAGES.find(s => s.id === newStage)?.label ?? newStage}`, type: 'success' })
-        if (team && user) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'stage_changed', entityType: 'deal', entityId: deal.id, entityName: deal.name, details: { from: deal.stage, to: newStage } })
-
-        if (newStage === 'proposal' && user && team) {
-          const automations = await getTeamAutomations(team.id)
-          if (isEnabled(automations, 'deal_proposal_task')) {
-            await runDealProposalTask(updatedDeal, contacts, user.id)
-          }
-        }
-      } else {
-        setItems(buildItems(deals))
-        setToast({ message: error.message, type: 'error' })
+      if (error) {
+        setDeals(prev => {
+          const reverted = prev.map(d => d.id === activeId ? { ...d, stage: deal.stage } : d)
+          setItems(buildItems(reverted))
+          return reverted
+        })
+        setToast({ message: 'Could not save - deal moved back.', type: 'error' })
+        return
       }
-    }
 
-    setActiveId(null)
+      if (team && user) {
+        logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'stage_changed', entityType: 'deal', entityId: deal.id, entityName: deal.name, details: { from: deal.stage, to: newStage } })
+      }
+      if (newStage === 'proposal' && user && team) {
+        getTeamAutomations(team.id).then(automations => {
+          if (isEnabled(automations, 'deal_proposal_task')) {
+            runDealProposalTask(updatedDeal, contacts, user.id)
+          }
+        })
+      }
+    })()
   }
 
   // ── Mobile move to stage ───────────────────────────────────────────────────
-  const handleMoveDealToStage = async (deal: Deal, targetStage: StageId) => {
+  const handleMoveDealToStage = (deal: Deal, targetStage: StageId) => {
     if (deal.stage === targetStage) return
+
+    // Optimistic: immediately reflect move in UI
+    const updatedDeal = { ...deal, stage: targetStage }
+    setDeals(prev => {
+      const next = prev.map(d => d.id === deal.id ? updatedDeal : d)
+      setItems(buildItems(next))
+      return next
+    })
     setSelectedDealId(null)
 
-    const { error } = await supabase
-      .from('deals')
-      .update({ stage: targetStage })
-      .eq('id', deal.id)
+    // Save in background - revert only on failure
+    ;(async () => {
+      const { error } = await supabase
+        .from('deals')
+        .update({ stage: targetStage })
+        .eq('id', deal.id)
 
-    if (!error) {
-      const updatedDeal = { ...deal, stage: targetStage }
-      setDeals(prev => {
-        const next = prev.map(d => d.id === deal.id ? updatedDeal : d)
-        setItems(buildItems(next))
-        return next
-      })
-      setToast({ message: `Moved to ${STAGES.find(s => s.id === targetStage)?.label ?? targetStage}`, type: 'success' })
-      if (team && user) logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'stage_changed', entityType: 'deal', entityId: deal.id, entityName: deal.name, details: { from: deal.stage, to: targetStage } })
-
-      if (targetStage === 'proposal' && user && team) {
-        const automations = await getTeamAutomations(team.id)
-        if (isEnabled(automations, 'deal_proposal_task')) {
-          await runDealProposalTask(updatedDeal, contacts, user.id)
-        }
+      if (error) {
+        setDeals(prev => {
+          const reverted = prev.map(d => d.id === deal.id ? deal : d)
+          setItems(buildItems(reverted))
+          return reverted
+        })
+        setToast({ message: 'Could not save - deal moved back.', type: 'error' })
+        return
       }
-    } else {
-      setToast({ message: error.message, type: 'error' })
-    }
+
+      if (team && user) {
+        logTeamActivity({ teamId: team.id, userId: user.id, userEmail: user.email ?? '', action: 'stage_changed', entityType: 'deal', entityId: deal.id, entityName: deal.name, details: { from: deal.stage, to: targetStage } })
+      }
+      if (targetStage === 'proposal' && user && team) {
+        getTeamAutomations(team.id).then(automations => {
+          if (isEnabled(automations, 'deal_proposal_task')) {
+            runDealProposalTask(updatedDeal, contacts, user.id)
+          }
+        })
+      }
+    })()
   }
 
   // ── CRUD ───────────────────────────────────────────────────────────────────

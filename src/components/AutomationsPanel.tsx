@@ -34,25 +34,30 @@ interface Props {
 }
 
 export function AutomationsPanel({ onToast }: Props) {
-  const team    = useBillingStore(s => s.team)
-  const isOwner = useBillingStore(s => s.isOwner)
+  const team           = useBillingStore(s => s.team)
+  const isOwner        = useBillingStore(s => s.isOwner)
+  const billingLoading = useBillingStore(s => s.isLoading)
   const [automations, setAutomations] = useState<Automation[]>([])
   const [loading, setLoading]         = useState(true)
   const [toggling, setToggling]       = useState<AutomationType | null>(null)
 
   useEffect(() => {
-    if (!team) return
+    if (billingLoading) return        // billing still in flight - wait
+    if (!team) { setLoading(false); return }  // billing done but no team
     loadAutomations()
-  }, [team])
+  }, [team, billingLoading])
 
   const loadAutomations = async () => {
     setLoading(true)
-    const { data } = await supabase
-      .from('automations')
-      .select('*')
-      .eq('team_id', team!.id)
-    setAutomations((data ?? []) as Automation[])
-    setLoading(false)
+    try {
+      const { data } = await supabase
+        .from('automations')
+        .select('*')
+        .eq('team_id', team!.id)
+      setAutomations((data ?? []) as Automation[])
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleToggle = async (type: AutomationType) => {

@@ -1,3 +1,10 @@
-# https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow:
+Allow: /
+Disallow: /dashboard
+Disallow: /contacts
+Disallow: /deals
+Disallow: /tasks
+Disallow: /settings
+Disallow: /invite/
+
+Sitemap: https://desklycrm.com/sitemap.xml
