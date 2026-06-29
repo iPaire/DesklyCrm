@@ -194,20 +194,20 @@ export default function Home() {
 
       {/* ── NAV ── */}
       <nav className="sticky top-0 z-20 bg-white/90 dark:bg-gray-950/90 backdrop-blur-md border-b border-gray-100 dark:border-gray-800">
-        <div className="max-w-[1120px] mx-auto px-4 sm:px-8 py-[14px] flex items-center justify-between">
-          <div className="flex items-center gap-[34px]">
-            <Link to="/" className="flex items-center gap-2.5">
-              <img src="/favicon.svg" alt="Deskly" className="w-7 h-7 shrink-0" />
-              <span className="text-[17px] font-bold tracking-tight text-gray-900 dark:text-white">Deskly</span>
-            </Link>
-            <div className="hidden md:flex items-center gap-[26px]">
-              <a href="#features" className="text-[14px] font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Features</a>
-              <a href="#pricing" className="text-[14px] font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Pricing</a>
-              <a href="#testimonial" className="text-[14px] font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Customers</a>
-            </div>
-          </div>
+        <div className="max-w-[1120px] mx-auto px-4 sm:px-8 py-[14px] grid grid-cols-3 items-center">
+          <Link to="/" className="flex items-center gap-2.5 justify-self-start">
+            <img src="/favicon.svg" alt="Deskly" className="w-7 h-7 shrink-0" />
+            <span className="text-[17px] font-bold tracking-tight text-gray-900 dark:text-white">Deskly</span>
+          </Link>
 
-          <div className="flex items-center gap-2.5">
+          <div className="hidden md:flex items-center justify-center gap-[30px]">
+            <a href="#features" className="text-[16px] font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Features</a>
+            <a href="#pricing" className="text-[16px] font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Pricing</a>
+            <a href="#testimonial" className="text-[16px] font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Customers</a>
+          </div>
+          <div className="md:hidden" />
+
+          <div className="flex items-center gap-2.5 justify-self-end">
             <button
               onClick={toggle}
               title={isDark ? 'Light mode' : 'Dark mode'}
