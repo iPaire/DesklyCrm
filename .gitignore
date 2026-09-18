@@ -30,3 +30,6 @@ ideas.txt
 # Vite
 dist/
 vite.config.ts.timestamp-*
+
+# Supabase CLI local state
+supabase/.temp/
