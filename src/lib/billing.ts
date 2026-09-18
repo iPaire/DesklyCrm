@@ -367,7 +367,7 @@ export async function getStripePortalUrl(): Promise<{ url: string | null; error:
     try {
       const body = await (error as any).context?.json()
       if (body) detail = body.error ?? body.message ?? detail
-    } catch {}
+    } catch { /* fall back to the message we already have */ }
     return { url: null, error: detail ?? 'Failed to open billing portal' }
   }
   return { url: data?.url ?? null, error: null }
@@ -408,7 +408,7 @@ export async function checkAndRestoreSubscription(): Promise<{ restored: boolean
   })
   if (error) {
     let detail = ''
-    try { const b = await (error as any).context?.json(); detail = b?.error ?? '' } catch {}
+    try { const b = await (error as any).context?.json(); detail = b?.error ?? '' } catch { /* fall back to empty detail */ }
     return { restored: detail === 'already_subscribed' }
   }
   // data.subscribed === false means no subscription found - nothing to restore
@@ -432,7 +432,7 @@ export async function verifyCheckoutSession(sessionId: string): Promise<{ ok: bo
     try {
       const body = await (error as any).context?.json()
       if (body) detail = body.error ?? body.message ?? detail
-    } catch {}
+    } catch { /* fall back to the message we already have */ }
     return { ok: false, error: detail ?? 'verify-checkout failed' }
   }
   return { ok: data?.ok === true, error: null }
@@ -451,7 +451,7 @@ export async function startStripeCheckout(): Promise<{ url: string | null; error
     try {
       const body = await (error as any).context?.json()
       if (body) detail = body.error ?? body.message ?? detail
-    } catch {}
+    } catch { /* fall back to the message we already have */ }
     console.error('stripe-checkout error:', detail)
     // Also check the raw error.message in case context parsing failed
     const isJwtError = (s: string) => s.toLowerCase().includes('jwt') || s === 'Unauthorized' || s.toLowerCase().includes('unauthorized')
@@ -479,7 +479,7 @@ export async function activateMemberSeat(
   if (!token) return { error: 'session_expired' }
 
   // 1. Increment Stripe subscription quantity and force-pay the prorated invoice.
-  let stripeSubscriptionId: string | null = null
+  let stripeSubscriptionId: string | null
   try {
     const { data, error: fnErr } = await supabase.functions.invoke('update-subscription', {
       body: { team_id: teamId, member_id: memberId },
@@ -490,7 +490,7 @@ export async function activateMemberSeat(
       try {
         const body = await (fnErr as any).context?.json()
         if (body) detail = body.error ?? body.message ?? detail
-      } catch {}
+      } catch { /* fall back to the message we already have */ }
       return { error: detail ?? 'Failed to update subscription in Stripe' }
     }
     if (data?.error) return { error: data.error }

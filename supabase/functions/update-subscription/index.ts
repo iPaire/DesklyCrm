@@ -5,6 +5,7 @@
 // Deploy: supabase functions deploy update-subscription
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { computeSeatCount, isAddingSeat } from '../_shared/seats.ts'
 
 const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY')!
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -67,7 +68,7 @@ Deno.serve(async (req) => {
       .eq('team_id', team.id as string)
       .eq('status', 'active')
 
-    const seats = Math.max(1, count ?? 1)
+    const seats = computeSeatCount(count)
 
     // Always keep DB seats in sync
     await supabase.from('teams').update({ seats }).eq('id', team.id as string)
@@ -97,7 +98,7 @@ Deno.serve(async (req) => {
     }
 
     const oldQuantity = sub.items?.data?.[0]?.quantity ?? 0
-    const addingSeat = memberId != null && seats > oldQuantity
+    const addingSeat = isAddingSeat(oldQuantity, seats, memberId)
 
     // Update quantity on Stripe - always_invoice triggers immediate prorated invoice when adding seats
     const updateRes = await fetch(`https://api.stripe.com/v1/subscription_items/${itemId}`, {

@@ -115,7 +115,7 @@ export async function processStripeEvent(
   }
 }
 
-function mapStripeStatus(status: Stripe.Subscription.Status): string {
+export function mapStripeStatus(status: Stripe.Subscription.Status): string {
   switch (status) {
     case 'active':
     case 'trialing':

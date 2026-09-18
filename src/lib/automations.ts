@@ -71,6 +71,11 @@ export function isEnabled(automations: Automation[], type: AutomationType): bool
   return automations.find(a => a.automation_type === type)?.enabled ?? false
 }
 
+/** Daily checks run at most once per calendar day, tracked via a `lastRun` marker on the `_daily_check` row. */
+export function alreadyRanToday(lastRun: string | null | undefined, today: string): boolean {
+  return lastRun === today
+}
+
 export async function getUserAutomations(userId: string): Promise<Automation[]> {
   const { data } = await supabase
     .from('automations')
@@ -174,7 +179,7 @@ async function checkStaleDeals(userId: string): Promise<void> {
 
   // Fetch contact names for context
   const contactIds = [...new Set(staleDeals.map(d => d.contact_id).filter(Boolean))]
-  let contactMap: Record<string, string> = {}
+  const contactMap: Record<string, string> = {}
   if (contactIds.length > 0) {
     const { data: contacts } = await supabase
       .from('contacts')
@@ -249,7 +254,8 @@ export async function runDailyChecks(userId: string, teamId: string): Promise<vo
     .eq('automation_type', '_daily_check')
     .maybeSingle()
 
-  if ((meta?.config as Record<string, unknown> | null)?.lastRun === today) return
+  const lastRun = (meta?.config as Record<string, unknown> | null)?.lastRun as string | undefined
+  if (alreadyRanToday(lastRun, today)) return
 
   // Mark as ran immediately to prevent duplicate runs (even cross-device)
   await supabase

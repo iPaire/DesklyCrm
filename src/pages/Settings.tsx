@@ -609,7 +609,7 @@ function ImportContactsPanel({ onToast }: { onToast: (m: string, t: 'success' | 
     if (enabledExtra.length > 0) {
       const existingDefs = await getColumnDefs(user.id)
       const existingKeys = existingDefs.map(d => d.key)
-      let updatedDefs = [...existingDefs]
+      const updatedDefs = [...existingDefs]
       for (const cf of enabledExtra) {
         if (updatedDefs.length >= MAX_CUSTOM_COLS) break
         const key = generateKey(cf.label, updatedDefs.map(d => d.key))
@@ -1016,7 +1016,7 @@ export default function Settings() {
         setTimeout(() => setInviteSent(false), 5000)
         const inviteLink = `${window.location.origin}/invite/${member.invite_token}`
         setLastInviteLink(inviteLink)
-        try { await navigator.clipboard.writeText(inviteLink) } catch {}
+        try { await navigator.clipboard.writeText(inviteLink) } catch { /* clipboard permission denied - link is still shown in the UI */ }
         const existingUserId = await findUserIdByEmail(member.email)
         setToast({
           message: existingUserId
@@ -1025,7 +1025,7 @@ export default function Settings() {
           type: 'success',
         })
       }
-    } catch (err) {
+    } catch {
       setToast({ message: 'An unexpected error occurred. Please try again.', type: 'error' })
     } finally {
       setInviteLoading(false)
@@ -1061,7 +1061,7 @@ export default function Settings() {
         setTimeout(() => setRecentlyResentIds(prev => { const next = new Set(prev); next.delete(memberId); return next }), 10000)
         const inviteLink = `${window.location.origin}/invite/${member.invite_token}`
         setLastInviteLink(inviteLink)
-        try { await navigator.clipboard.writeText(inviteLink) } catch {}
+        try { await navigator.clipboard.writeText(inviteLink) } catch { /* clipboard permission denied - link is still shown in the UI */ }
         const existingUserId = await findUserIdByEmail(email)
         setToast({
           message: existingUserId
@@ -1552,7 +1552,7 @@ export default function Settings() {
                     onCopyLink={async () => {
                       const link = `${window.location.origin}/invite/${m.invite_token}`
                       setLastInviteLink(link)
-                      try { await navigator.clipboard.writeText(link) } catch {}
+                      try { await navigator.clipboard.writeText(link) } catch { /* clipboard permission denied - link is still shown in the UI */ }
                       setToast({ message: `Invite link copied for ${m.email}!`, type: 'success' })
                     }}
                     onViewActivity={() => setActivityMember({ email: m.email, user_id: m.user_id })}
@@ -1616,7 +1616,7 @@ export default function Settings() {
                   <span className="text-xs text-gray-500 dark:text-gray-400 flex-1 truncate font-mono">{lastInviteLink}</span>
                   <button
                     onClick={async () => {
-                      try { await navigator.clipboard.writeText(lastInviteLink) } catch {}
+                      try { await navigator.clipboard.writeText(lastInviteLink) } catch { /* clipboard permission denied - link is still shown in the UI */ }
                       setToast({ message: 'Link copied to clipboard!', type: 'success' })
                     }}
                     className="shrink-0 px-2.5 py-1 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors"

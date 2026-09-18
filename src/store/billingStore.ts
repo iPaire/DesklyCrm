@@ -30,7 +30,9 @@ export const useBillingStore = create<BillingState>((set) => ({
 
   fetchBilling: async (userId: string) => {
     set({ isLoading: true })
-    let { team, role, membershipFound, hasPaidSeat, memberJoinedAt, memberTrialStart } = await getTeamAndRole(userId)
+    const teamAndRole = await getTeamAndRole(userId)
+    let { team, role, hasPaidSeat } = teamAndRole
+    const { membershipFound, memberJoinedAt, memberTrialStart } = teamAndRole
     if (!membershipFound) {
       const { data: { user } } = await supabase.auth.getUser()
       const email = user?.email
