@@ -50,7 +50,7 @@ The application is a single Vite/React SPA talking almost directly to Supabase. 
 | **Frontend** | React 18, TypeScript, Vite 6, Tailwind CSS, Zustand (client state), TanStack Query (server-state caching), dnd-kit (Kanban drag-and-drop), Recharts |
 | **Backend** | Supabase Postgres accessed directly from the client, authorized entirely by Row-Level Security. No custom REST/GraphQL layer for everyday CRUD |
 | **Privileged operations** | Supabase Edge Functions (Deno): Stripe billing, Google OAuth token exchange, account deletion, team invites |
-| **Database** | PostgreSQL (Supabase-hosted), 91 RLS policies across 15+ tables, `pg_cron` + `pg_net` for scheduled jobs |
+| **Database** | PostgreSQL (Supabase-hosted), 76 RLS policies across 14 tables, `pg_cron` + `pg_net` for scheduled jobs |
 | **Auth** | Supabase Auth: email/password and Google OAuth |
 | **Payments** | Stripe (Checkout, Customer Portal, webhooks, per-seat proration) |
 | **Rate limiting** | Upstash Redis, fixed-window counters, fail-open |
