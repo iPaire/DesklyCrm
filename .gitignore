@@ -25,7 +25,9 @@ yarn-error.log*
 
 # Claude Code local settings
 .claude/settings.local.json
+ideas
 ideas.txt
+_design/
 
 # Vite
 dist/

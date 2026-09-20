@@ -138,7 +138,7 @@ function TrialEndedModal() {
         <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-3">
           Need more time?{' '}
           <a
-            href="mailto:pedro@deskly.app?subject=Trial extension request"
+            href="mailto:pedro@desklycrm.com?subject=Trial extension request"
             className="text-primary-600 dark:text-primary-400 hover:underline font-medium"
           >
             Email us for a 7-day extension
