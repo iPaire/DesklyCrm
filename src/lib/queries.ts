@@ -36,18 +36,6 @@ export async function fetchContactsList() {
   }
 }
 
-export async function fetchDealsList() {
-  const [{ data: deals, error }, { data: contacts }] = await Promise.all([
-    supabase.from('deals').select('*').eq('archived', false).order('created_at', { ascending: true }),
-    supabase.from('contacts').select('*').order('name', { ascending: true }),
-  ])
-  if (error) throw error
-  return {
-    deals: (deals ?? []) as Deal[],
-    contacts: (contacts ?? []) as Contact[],
-  }
-}
-
 export async function fetchContactDetail(contactId: string, userId: string) {
   const [contactRes, emailsRes, activityRes, dealsRes, tasksRes, allContactsRes, gmailRes] = await Promise.all([
     supabase.from('contacts').select('*').eq('id', contactId).single(),

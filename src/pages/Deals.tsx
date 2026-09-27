@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchDealsList } from '../lib/queries'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   DndContext,
   DragOverlay,
@@ -722,19 +721,6 @@ export default function Deals() {
   const [loading,    setLoading]    = useState(true)
   const [fetchError, setFetchError] = useState('')
   const [retryKey,   setRetryKey]   = useState(0)
-
-  // Populate local state from query cache on first load (instant if cached)
-  const { data: queryData } = useQuery({ queryKey: ['deals-list'], queryFn: fetchDealsList })
-  const initializedRef = useRef(false)
-  useEffect(() => {
-    if (queryData && !initializedRef.current) {
-      setDeals(queryData.deals)
-      setContacts(queryData.contacts)
-      setItems(buildItems(queryData.deals))
-      setLoading(false)
-      initializedRef.current = true
-    }
-  }, [queryData])
 
   // Always-current items for async drag end handler
   const itemsRef = useRef(items)
