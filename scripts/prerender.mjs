@@ -23,15 +23,19 @@ await build({
 const { render } = await import(pathToFileURL(resolve(root, 'dist-ssr/entry-server.js')).href)
 const appHtml = render('/')
 
-// 3. Inject into dist/index.html
+// 3. Keep an un-rendered copy for client-only routes (avoids hydrating
+//    the Home markup against a different page's component tree).
 const template = readFileSync(resolve(root, 'dist/index.html'), 'utf-8')
 if (!template.includes('<!--app-html-->')) {
   throw new Error('index.html is missing the <!--app-html--> placeholder')
 }
+writeFileSync(resolve(root, 'dist/app.html'), template.replace('<!--app-html-->', ''))
+
+// 4. Inject prerendered Home markup into dist/index.html, served only for /
 const html = template.replace('<!--app-html-->', appHtml)
 writeFileSync(resolve(root, 'dist/index.html'), html)
 
-// 4. Clean up SSR bundle
+// 5. Clean up SSR bundle
 rmSync(resolve(root, 'dist-ssr'), { recursive: true, force: true })
 
-console.log('✓ Prerendered / → dist/index.html')
+console.log('✓ Prerendered / → dist/index.html (other routes → dist/app.html)')
