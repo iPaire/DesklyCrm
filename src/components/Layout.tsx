@@ -137,7 +137,7 @@ export default function Layout() {
     <>
       {/* Logo */}
       <button
-        onClick={() => navigate('/')}
+        onClick={() => navigate('/', { replace: true })}
         className="flex items-center gap-2.5 px-5 py-[18px] border-b border-gray-100 dark:border-gray-800 hover:opacity-80 transition-opacity text-left w-full"
       >
         <img src="/favicon.svg" alt="Deskly" className="w-7 h-7 shrink-0" />
@@ -150,6 +150,7 @@ export default function Layout() {
           <NavLink
             key={item.to}
             to={item.to}
+            replace
             onClick={() => setSidebarOpen(false)}
             className={({ isActive }) =>
               `flex items-center gap-3 px-3 py-3 rounded-lg text-[15px] font-medium transition-colors ${
@@ -267,7 +268,7 @@ export default function Layout() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <button onClick={() => navigate('/')} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+          <button onClick={() => navigate('/', { replace: true })} className="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <img src="/favicon.svg" alt="Deskly" className="w-6 h-6 shrink-0" />
             <span className="text-sm font-semibold text-gray-900 dark:text-white">Deskly</span>
           </button>

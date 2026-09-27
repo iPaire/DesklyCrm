@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchDealsList } from '../lib/queries'
 import {
   DndContext,
@@ -715,6 +715,7 @@ function MobileKanbanColumn({
 export default function Deals() {
   const user = useAuthStore(s => s.user)
   const team = useBillingStore(s => s.team)
+  const queryClient = useQueryClient()
   const [deals,    setDeals]    = useState<Deal[]>([])
   const [contacts, setContacts] = useState<Contact[]>([])
   const [items,      setItems]      = useState<Record<StageId, string[]>>(buildItems([]))
@@ -839,6 +840,8 @@ export default function Deals() {
           { event: '*', schema: 'public', table: 'deals' },
           (payload) => {
             if (cancelled) return
+            // Dashboard's stats/funnel are cached separately - keep them in sync with deal changes.
+            queryClient.invalidateQueries({ queryKey: ['dashboard-data'] })
             if (payload.eventType === 'INSERT') {
               const newDeal = payload.new as Deal
               if (newDeal.archived) return
