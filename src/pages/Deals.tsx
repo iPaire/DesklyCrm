@@ -929,29 +929,34 @@ export default function Deals() {
     }
 
     const overId = over.id as string
+    const deal   = deals.find(d => d.id === activeId)
+    if (!deal) return
 
     const activeContainer = findContainer(activeId, currentItems)
     const overContainer   = STAGE_IDS.has(overId)
       ? (overId as StageId)
       : findContainer(overId, currentItems)
 
-    if (activeContainer && overContainer && activeContainer === overContainer) {
-      const col  = currentItems[activeContainer]
-      const aIdx = col.indexOf(activeId)
-      const oIdx = col.indexOf(overId)
-      if (aIdx !== -1 && oIdx !== -1 && aIdx !== oIdx) {
-        setItems(prev => ({
-          ...prev,
-          [activeContainer]: arrayMove(prev[activeContainer], aIdx, oIdx),
-        }))
+    // handleDragOver already moved the card into its target column locally, so
+    // activeContainer/overContainer reflect the DESTINATION, not the original
+    // stage - compare against deal.stage (the persisted value) to tell a same-
+    // stage reorder apart from an actual stage change.
+    const newStage = overContainer ?? deal.stage
+
+    if (newStage === deal.stage) {
+      if (activeContainer && overContainer && activeContainer === overContainer) {
+        const col  = currentItems[activeContainer]
+        const aIdx = col.indexOf(activeId)
+        const oIdx = col.indexOf(overId)
+        if (aIdx !== -1 && oIdx !== -1 && aIdx !== oIdx) {
+          setItems(prev => ({
+            ...prev,
+            [activeContainer]: arrayMove(prev[activeContainer], aIdx, oIdx),
+          }))
+        }
       }
       return
     }
-
-    const deal     = deals.find(d => d.id === activeId)
-    const newStage = findContainer(activeId, currentItems)
-
-    if (!deal || !newStage || deal.stage === newStage) return
 
     // Optimistic: update deals immediately so colors + totals reflect the new stage
     const updatedDeal = { ...deal, stage: newStage }
